@@ -152,6 +152,7 @@ class FuenteEnVivo(Provider):
         self._eventos: list[dict] = []
         self._cuando = 0.0
         self._error = ""
+        self._fallo_en = 0.0                  # última lectura fallida (monotonic)
         self._candado = asyncio.Lock()
         self._transporte = None               # las pruebas lo sustituyen
 
@@ -214,7 +215,7 @@ class FuenteEnVivo(Provider):
                 self._eventos = [e for e in evs if not _dobles(e["j1"], e["j2"])]
                 self._cuando, self._error = time.monotonic(), ""
             except ProviderError as e:
-                self._error = str(e)
+                self._error, self._fallo_en = str(e), time.monotonic()
                 raise
             return len(self._eventos)
 
@@ -225,10 +226,20 @@ class FuenteEnVivo(Provider):
         """Lista cacheada. Se relee si está vieja (o si se fuerza); si la
         relectura falla, se sirve la última lista buena mientras no sea muy vieja."""
         if forzar or self._edad() > config.FUENTES_TTL_S:
+            muy_vieja = self._edad() > config.FUENTES_TTL_S * 10
+            fallo_reciente = self._fallo_en and time.monotonic() - self._fallo_en < config.FUENTES_TTL_S
+            # Respuesta RÁPIDA (30/09/2026): si la fuente acaba de fallar o ya la está
+            # leyendo la tarea de fondo, no se hace esperar al usuario: con datos
+            # recientes se sirven; sin ellos, error inmediato (la pestaña abre la
+            # sección de tenis de la casa en vez de agotar su tiempo).
+            if muy_vieja and (fallo_reciente or self._candado.locked()):
+                raise ProviderError(self._error or f"{self.nombre}: leyendo la casa, aún sin datos")
+            if self._candado.locked():
+                return self._eventos
             try:
                 await self.refrescar()
             except ProviderError:
-                if self._edad() > config.FUENTES_TTL_S * 10:
+                if muy_vieja:
                     raise
         return self._eventos
 
@@ -617,15 +628,49 @@ async def refrescar_todas() -> dict[str, str]:
             return f.metodo, f"{n} partidos"
         except asyncio.TimeoutError:
             f._error = f"{f.nombre}: sin respuesta en {TIEMPO_MAX_FUENTE_S} s"
+            f._fallo_en = time.monotonic()
             return f.metodo, f"✗ {f._error}"
         except Exception as e:
             return f.metodo, f"✗ {e}"
     return dict(await asyncio.gather(*(una(f) for f in FUENTES.values())))
 
 
+PROXY_DIAG: dict[str, dict] = {}            # fuente -> {pais, region, ms, error, cuando}
+
+
+async def diagnosticar_proxies() -> dict[str, dict]:
+    """¿Por dónde sale de verdad cada proxy y cuánto tarda? (ipinfo.io, a través
+    del propio proxy). Solo país/región/tiempo: nunca la dirección del proxy."""
+    for fuente, proxy in config.FUENTES_PROXY.items():
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=25, proxy=proxy) as cli:
+                r = await cli.get("https://ipinfo.io/json")
+            d = r.json()
+            PROXY_DIAG[fuente] = {"pais": d.get("country"), "region": d.get("region"),
+                                  "ms": round((time.monotonic() - t0) * 1000), "error": "",
+                                  "cuando": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        except Exception as e:
+            PROXY_DIAG[fuente] = {"pais": None, "region": None,
+                                  "ms": round((time.monotonic() - t0) * 1000),
+                                  "error": type(e).__name__,
+                                  "cuando": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    return PROXY_DIAG
+
+
 async def bucle(intervalo_s: int | None = None) -> None:
-    """Refresca en segundo plano las fuentes configuradas (tarea del BOT)."""
+    """Refresca en segundo plano las fuentes configuradas (tarea del BOT) y, cada
+    ~5 min, comprueba por dónde salen los proxies."""
+    vuelta = 0
     while True:
+        if config.FUENTES_PROXY and vuelta % 7 == 0:
+            try:
+                for f_, d_ in (await diagnosticar_proxies()).items():
+                    if d_["error"] or d_["pais"] != "CO":
+                        log.warning(f"[proxy {f_}] sale por {d_['pais']} en {d_['ms']} ms {d_['error']}")
+            except Exception as e:
+                log.warning(f"[proxy] diagnóstico falló: {type(e).__name__}")
+        vuelta += 1
         for m, r in (await refrescar_todas()).items():
             if r.startswith("✗"):
                 log.warning(f"[{m}] {r}")

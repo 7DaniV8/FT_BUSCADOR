@@ -643,6 +643,7 @@ def fuentes_falsas(request: httpx.Request):
 
 for f_ in fu.FUENTES.values():
     f_._transporte = httpx.MockTransport(fuentes_falsas)
+    for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
     f_._eventos, f_._cuando, f_._error = [], 0.0, ""
 config.FANDUEL_AK = "ak-de-prueba"
 sync.guardar_fixture(conn, {"fixture_id": "ft-mto2", "fecha": HOY, "jugador1": "Zizou Bergs",
@@ -744,6 +745,7 @@ def kalshi_falso(request: httpx.Request):
 
 
 fu.FUENTES["kalshi"]._transporte = httpx.MockTransport(kalshi_falso)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kalshi"]._eventos, fu.FUENTES["kalshi"]._cuando = [], 0.0
 conn.execute("UPDATE provider_catalog SET metodo='kalshi', estado='TESTING', dominios='[\"kalshi.com\"]' "
              "WHERE id='kalshi'")
@@ -778,6 +780,7 @@ def mgm_poly(request: httpx.Request):
 
 for m_ in ("betmgm", "polymarket"):
     fu.FUENTES[m_]._transporte = httpx.MockTransport(mgm_poly)
+    for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
     fu.FUENTES[m_]._eventos, fu.FUENTES[m_]._cuando = [], 0.0
 config.BETMGM_ACCESSID = "accessid-de-prueba"
 conn.execute("UPDATE provider_catalog SET metodo='betmgm', estado='TESTING', dominios='[\"betmgm.com\"]' "
@@ -805,6 +808,7 @@ async def curl_falso(url, params, headers, timeout, proxy=None):
 _curl_orig = fu._curl_get
 fu._curl_get = curl_falso
 fu.FUENTES["betmgm"]._transporte = None
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["betmgm"]._eventos, fu.FUENTES["betmgm"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -816,6 +820,7 @@ ok(vistos_poly_http >= 1, "las demás fuentes siguen con la conexión normal")
 config.FUENTES_IMITAR_CHROME = set()
 llamadas_chrome.clear()
 fu.FUENTES["betmgm"]._transporte = httpx.MockTransport(lambda r: httpx.Response(403))
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["betmgm"]._eventos, fu.FUENTES["betmgm"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -834,6 +839,7 @@ fu._curl_get = curl_con_proxy
 config.FUENTES_IMITAR_CHROME = {"betmgm"}
 config.FUENTES_PROXY = {"betmgm": "http://usuario:SECRETO@proxy.example:8000"}
 fu.FUENTES["betmgm"]._transporte = None
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["betmgm"]._eventos, fu.FUENTES["betmgm"]._cuando = [], 0.0
 config.BETMGM_ACCESSID = "accessid-de-prueba"
 conn.execute("DELETE FROM provider_event_map")
@@ -904,6 +910,7 @@ def colombia_falsa(request: httpx.Request):
 
 for m_ in ("betano", "wplay"):
     fu.FUENTES[m_]._transporte = httpx.MockTransport(colombia_falsa)
+    for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
     fu.FUENTES[m_]._eventos, fu.FUENTES[m_]._cuando = [], 0.0
 catalogo.sembrar(conn)
 conn.execute("DELETE FROM provider_event_map")
@@ -951,6 +958,7 @@ ok(res_f("betano_co")["url"] == "https://www.betano.co/live/jiri-lehecka-zizou-b
    "Betano: lee de otra web (ro.betano.com) y enlaza a betano.co con el mismo número")
 config.BETANO_HOST = "www.betano.co"
 fu.FUENTES["wplay"]._transporte = httpx.MockTransport(lambda r: httpx.Response(200, text="<html>otra cosa</html>"))
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["wplay"]._eventos, fu.FUENTES["wplay"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -959,6 +967,7 @@ ok(res_f("wplay_co")["estado"] == "ERROR",
 
 config.BETMGM_ACCESSID = "accessid-de-prueba"
 fu.FUENTES["betmgm"]._transporte = httpx.MockTransport(lambda r: httpx.Response(200, json=MGM_R))
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["betmgm"]._eventos, fu.FUENTES["betmgm"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -975,6 +984,7 @@ def kalshi_sin_red(request: httpx.Request):
 
 
 fu.FUENTES["kalshi"]._transporte = httpx.MockTransport(kalshi_sin_red)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kalshi"]._eventos, fu.FUENTES["kalshi"]._cuando = [], 0.0
 try:
     asyncio.run(fu.FUENTES["kalshi"].refrescar())
@@ -988,6 +998,7 @@ async def _lenta(req):
     return httpx.Response(200, json={})
 
 fu.FUENTES["kalshi"]._transporte = httpx.MockTransport(_lenta)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kalshi"]._eventos, fu.FUENTES["kalshi"]._cuando = [], 0.0
 _orig = fu.TIEMPO_MAX_FUENTE_S
 fu.TIEMPO_MAX_FUENTE_S = 1
@@ -1002,6 +1013,7 @@ fu.TIEMPO_MAX_FUENTE_S, config.TIMEOUT_PROVIDER_S = _orig, config_to
 # Respaldo: sección de tenis de la casa cuando no hay enlace directo
 catalogo.sembrar(conn)
 fu.FUENTES["kambi"]._transporte = httpx.MockTransport(lambda r: httpx.Response(403))
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kambi"]._eventos, fu.FUENTES["kambi"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -1009,6 +1021,7 @@ r_err = res_f("betplay_co")
 ok(r_err["estado"] == "ERROR" and r_err.get("respaldo") == "https://tienda.betplay.com.co/apuestas#filter/tennis",
    "respaldo: fuente caída → sección de tenis de la casa")
 fu.FUENTES["kambi"]._transporte = httpx.MockTransport(fuentes_falsas)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kambi"]._eventos, fu.FUENTES["kambi"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -1017,6 +1030,7 @@ ok(r_ok["estado"] == "ENCONTRADO" and "respaldo" not in r_ok, "respaldo: nunca c
 ok(res_f("luckia_co").get("respaldo") is None, "respaldo: nunca en casas pendientes")
 catalogo.RESPALDO["betplay_co"] = "https://malicioso.example/tenis"
 fu.FUENTES["kambi"]._transporte = httpx.MockTransport(lambda r: httpx.Response(403))
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kambi"]._eventos, fu.FUENTES["kambi"]._cuando = [], 0.0
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
@@ -1027,6 +1041,7 @@ ok(all(any(urlparse_(u).hostname == d or urlparse_(u).hostname.endswith("." + d)
        for pid, u in catalogo.RESPALDO.items()),
    "todas las direcciones de respaldo pertenecen a los dominios de su casa")
 fu.FUENTES["kambi"]._transporte = httpx.MockTransport(fuentes_falsas)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
 fu.FUENTES["kambi"]._eventos, fu.FUENTES["kambi"]._cuando = [], 0.0
 
 # Sync: tras un fallo reintenta pronto y, al recuperarse, borra el error antiguo
@@ -1057,6 +1072,39 @@ sync_mod.sincronizar_una_vez, sync_mod.asyncio.sleep = _orig_sinc, _orig_sleep
 ok(esperas[0] == 60, "sync: tras un fallo reintenta al minuto (no a los 14)")
 ok(conn.execute("SELECT COUNT(*) FROM sync_estado WHERE clave='ultimo_error'").fetchone()[0] == 0,
    "sync: al recuperarse, /salud deja de mostrar el error antiguo")
+
+# Respuesta rápida: una casa que acaba de fallar no hace esperar al usuario
+llamadas_lenta = {"n": 0}
+
+
+async def _casa_lenta(req):
+    llamadas_lenta["n"] += 1
+    await asyncio.sleep(3)
+    return httpx.Response(403)
+
+fu.FUENTES["kambi"]._transporte = httpx.MockTransport(_casa_lenta)
+fu.FUENTES["kambi"]._eventos, fu.FUENTES["kambi"]._cuando = [], 0.0
+fu.FUENTES["kambi"]._error, fu.FUENTES["kambi"]._fallo_en = "kambi: sin conexión (Timeout)", _t.monotonic()
+conn.execute("DELETE FROM provider_event_map")
+conn.commit()
+t0 = _t.time()
+r_rap = res_f("betplay_co")
+ok(_t.time() - t0 < 1 and r_rap["estado"] == "ERROR" and r_rap.get("respaldo") and llamadas_lenta["n"] == 0,
+   "casa que acaba de fallar: responde al momento con su sección de tenis, sin volver a esperarla")
+fu.FUENTES["kambi"]._transporte = httpx.MockTransport(fuentes_falsas)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0
+
+# Búsqueda: el mismo partido registrado dos veces (dos vías) sale una sola vez
+_h1 = _iso(-60)
+_h2 = (_dt.fromisoformat(_h1.replace("Z", "+00:00")) + _td(hours=2)).isoformat()
+sync.guardar_fixture(conn, {"fixture_id": "dup-a", "fecha": _h1, "jugador1": "Jiri Lehecka", "jugador2": "Zizou Bergs",
+                            "torneo": "ATP Tokyo - R1", "genero": "M"}, "fixtures")
+sync.guardar_fixture(conn, {"fixture_id": "dup-b", "fecha": _h2, "jugador1": "Zizou Bergs", "jugador2": "Jiri Lehecka",
+                            "torneo": "Japan Open Tennis Championships", "genero": "M"}, "fixtures")
+conn.commit()
+lista_dup = cli2.get("/api/partidos", params={"q": "lehecka bergs"}, headers=H).json()["partidos"]
+ok(len(lista_dup) == 1, f"búsqueda: el mismo partido registrado dos veces sale una sola vez ({len(lista_dup)})")
+ok("proxies" in cli2.get("/salud").json(), "/salud incluye el diagnóstico de salida de los proxies")
 
 # CORS: diagnóstico del origen rechazado
 import logging as _lg  # noqa: E402

@@ -142,7 +142,8 @@ def salud():
                          "barrido_horas": config.ODDSPAPI_BARRIDO_HORAS,
                          "barrido": est.get("oddspapi_barrido", "")},
             "fuentes": {m: {"configurada": f.configurada(), **f.estado()}
-                        for m, f in fuentes_mod.FUENTES.items()}}
+                        for m, f in fuentes_mod.FUENTES.items()},
+            "proxies": fuentes_mod.PROXY_DIAG}
 
 
 @app.get("/api/partidos")
@@ -157,12 +158,27 @@ def partidos(q: str = Query("", max_length=80), limite: int = Query(20, ge=1, le
             "SELECT * FROM fixtures_cache ORDER BY fecha LIMIT 5000").fetchall()
     finally:
         conn.close()
-    salida = []
+    salida, vistos = [], []
+
+    def _duplicado(f) -> bool:
+        """El mismo partido registrado dos veces en FullTenis (dos vías, horas
+        distintas): mismos dos jugadores y menos de 12 h de diferencia."""
+        par = frozenset(" ".join(sorted(normalizar(n).split())) for n in (f["jugador1"], f["jugador2"]))
+        try:
+            t = datetime.fromisoformat(str(f["fecha"]).replace("Z", "+00:00")[:19])
+        except ValueError:
+            t = None
+        for par_v, t_v in vistos:
+            if par_v == par and (t is None or t_v is None or abs((t - t_v).total_seconds()) <= 12 * 3600):
+                return True
+        vistos.append((par, t))
+        return False
+
     for f in filas:
         if "/" in f"{f['jugador1']}{f['jugador2']}":
             continue                      # dobles: ninguna fuente da su enlace
         texto = normalizar(f"{f['jugador1']} {f['jugador2']} {f['torneo']}")
-        if all(p in texto for p in palabras):
+        if all(p in texto for p in palabras) and not _duplicado(f):
             salida.append({"clave": f["clave"], "jugador1": f["jugador1"],
                            "jugador2": f["jugador2"], "torneo": f["torneo"],
                            "categoria": f["categoria"], "fecha": f["fecha"],
