@@ -88,6 +88,18 @@ app.add_middleware(CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS,
 
 
 @app.middleware("http")
+async def _avisar_origen_rechazado(request: Request, call_next):
+    """Diagnóstico: si el navegador llama desde una web que NO está en
+    ALLOWED_ORIGINS, se escribe en el log la dirección exacta (es pública) para
+    poder copiarla. No cambia la respuesta: CORS la sigue rechazando."""
+    origen = request.headers.get("origin", "")
+    if origen and origen.rstrip("/") not in config.ALLOWED_ORIGINS:
+        log.warning(f"[cors] petición RECHAZADA desde {origen!r}: no está en ALLOWED_ORIGINS "
+                    f"{config.ALLOWED_ORIGINS!r}. Añade esa dirección exacta a la variable.")
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def modo_prueba(request: Request, call_next):
     """Simulación de fallos para las pruebas de aislamiento en staging."""
     if request.url.path.startswith("/api/") and request.method != "OPTIONS":
@@ -122,6 +134,7 @@ def salud():
     finally:
         conn.close()
     return {"ok": True, "modo_prueba": sorted(config.MODO_PRUEBA),
+            "cors_permitidos": config.ALLOWED_ORIGINS,
             "fixtures_en_cache": n, "sync": est,
             "oddspapi": {"configurado": bool(config.ODDSPAPI_API_KEY), "partidos": n_op,
                          "precarga_min": config.ODDSPAPI_PRECARGA_MIN,

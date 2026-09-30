@@ -1058,6 +1058,29 @@ ok(esperas[0] == 60, "sync: tras un fallo reintenta al minuto (no a los 14)")
 ok(conn.execute("SELECT COUNT(*) FROM sync_estado WHERE clave='ultimo_error'").fetchone()[0] == 0,
    "sync: al recuperarse, /salud deja de mostrar el error antiguo")
 
+# CORS: diagnóstico del origen rechazado
+import logging as _lg  # noqa: E402
+_capt = []
+
+
+class _Capt(_lg.Handler):
+    def emit(self, rec):
+        _capt.append(rec.getMessage())
+
+
+_lg.getLogger("buscador").addHandler(_Capt())
+r_cors = cli2.options("/api/catalogo", headers={"Origin": "https://otro-dominio.example",
+                                               "Access-Control-Request-Method": "GET",
+                                               "Access-Control-Request-Headers": "authorization"})
+ok(r_cors.status_code == 400 and any("https://otro-dominio.example" in m and "RECHAZADA" in m for m in _capt),
+   "CORS: el origen no permitido se rechaza y el log dice la dirección exacta")
+r_bien = cli2.options("/api/catalogo", headers={"Origin": config.ALLOWED_ORIGINS[0],
+                                               "Access-Control-Request-Method": "GET",
+                                               "Access-Control-Request-Headers": "authorization"})
+ok(r_bien.status_code == 200, "CORS: el origen permitido pasa (con Authorization)")
+ok(cli2.get("/salud").json().get("cors_permitidos") == config.ALLOWED_ORIGINS,
+   "/salud muestra las direcciones permitidas (ALLOWED_ORIGINS)")
+
 sal = cli2.get("/salud").json()
 ok(set(sal.get("fuentes", {})) >= {"kambi", "fanduel", "draftkings", "caesars"}, "/salud muestra el estado de cada fuente")
 
