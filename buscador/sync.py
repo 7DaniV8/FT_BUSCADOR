@@ -37,6 +37,10 @@ def _estado(conn, clave, valor):
                  (clave, str(valor)))
 
 
+def _borrar_estado(conn, clave):
+    conn.execute("DELETE FROM sync_estado WHERE clave = ?", (clave,))
+
+
 def guardar_fixture(conn: sqlite3.Connection, f: dict, origen: str) -> bool:
     j1, j2 = str(f.get("jugador1") or "").strip(), str(f.get("jugador2") or "").strip()
     fecha = str(f.get("fecha") or "").strip()
@@ -111,21 +115,26 @@ async def sincronizar_una_vez(conn: sqlite3.Connection, cliente: httpx.AsyncClie
 
 async def bucle(conectar) -> None:
     """Tarea de fondo del servicio del buscador."""
-    espera_error = config.SYNC_MINUTOS * 60
+    # Tras un fallo se reintenta pronto (1 min) y cada vez más espaciado, hasta
+    # 30 min: tras un despliegue, RankingFTR suele tardar unos minutos en estar
+    # listo. Cuando vuelve a funcionar, se borra el error antiguo de /salud.
+    espera_error = 60
     while True:
         conn = conectar()
         try:
             async with httpx.AsyncClient(timeout=config.TIMEOUT_FTR_S) as cli:
                 res = await sincronizar_una_vez(conn, cli)
             log.info(f"[sync] {res}")
+            _borrar_estado(conn, "ultimo_error")
+            conn.commit()
             espera = config.SYNC_MINUTOS * 60
-            espera_error = espera
+            espera_error = 60
         except Exception as e:
             _estado(conn, "ultimo_error", f"{_ahora()} {type(e).__name__}: {e}")
             conn.commit()
-            log.warning(f"[sync] FullTenis no disponible: {e}")
-            espera_error = min(espera_error * 2, 30 * 60)
+            log.warning(f"[sync] FullTenis no disponible (reintento en {espera_error // 60} min): {e}")
             espera = espera_error
+            espera_error = min(espera_error * 2, 30 * 60)
         finally:
             conn.close()
         await asyncio.sleep(espera)

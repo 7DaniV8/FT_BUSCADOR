@@ -1029,6 +1029,35 @@ ok(all(any(urlparse_(u).hostname == d or urlparse_(u).hostname.endswith("." + d)
 fu.FUENTES["kambi"]._transporte = httpx.MockTransport(fuentes_falsas)
 fu.FUENTES["kambi"]._eventos, fu.FUENTES["kambi"]._cuando = [], 0.0
 
+# Sync: tras un fallo reintenta pronto y, al recuperarse, borra el error antiguo
+import buscador.sync as sync_mod  # noqa: E402
+esperas, llamadas_sync = [], {"n": 0}
+
+
+async def sinc_falsa(conn_, cli_):
+    llamadas_sync["n"] += 1
+    if llamadas_sync["n"] == 1:
+        raise RuntimeError("401 de prueba")
+    return {"ok": 1}
+
+
+async def dormir_falso(seg):
+    esperas.append(seg)
+    if len(esperas) >= 2:
+        raise asyncio.CancelledError
+
+
+_orig_sinc, _orig_sleep = sync_mod.sincronizar_una_vez, sync_mod.asyncio.sleep
+sync_mod.sincronizar_una_vez, sync_mod.asyncio.sleep = sinc_falsa, dormir_falso
+try:
+    asyncio.run(sync_mod.bucle(db.conectar))
+except asyncio.CancelledError:
+    pass
+sync_mod.sincronizar_una_vez, sync_mod.asyncio.sleep = _orig_sinc, _orig_sleep
+ok(esperas[0] == 60, "sync: tras un fallo reintenta al minuto (no a los 14)")
+ok(conn.execute("SELECT COUNT(*) FROM sync_estado WHERE clave='ultimo_error'").fetchone()[0] == 0,
+   "sync: al recuperarse, /salud deja de mostrar el error antiguo")
+
 sal = cli2.get("/salud").json()
 ok(set(sal.get("fuentes", {})) >= {"kambi", "fanduel", "draftkings", "caesars"}, "/salud muestra el estado de cada fuente")
 
