@@ -34,8 +34,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import catalogo, config, db, providers, sync, validacion
-from .claves import normalizar
+from .claves import apellidos, normalizar
 from .resolver import AMBIGUO, ENCONTRADO, NO_ENCONTRADO, Partido, elegir
+from . import categoria as categoria_mod
+from . import cobertura as cobertura_mod
+from .claves import clave_partido
 from .providers import fuentes as fuentes_mod
 from .providers.oddspapi import SinAccesoEnVivo
 from .token import TokenInvalido, verificar
@@ -67,6 +70,7 @@ async def ciclo(app: FastAPI):
     if config.SYNC_ACTIVO:
         tareas.append(asyncio.create_task(sync.bucle(_conn)))
         tareas.append(asyncio.create_task(fuentes_mod.bucle()))
+        tareas.append(asyncio.create_task(cobertura_mod.bucle(_conn)))
         if config.ODDSPAPI_API_KEY:
             tareas.append(asyncio.create_task(providers.ODDSPAPI.bucle(_conn)))
             if config.ODDSPAPI_BARRIDO_HORAS:
@@ -143,7 +147,8 @@ def salud():
                          "barrido": est.get("oddspapi_barrido", "")},
             "fuentes": {m: {"configurada": f.configurada(), **f.estado()}
                         for m, f in fuentes_mod.FUENTES.items()},
-            "proxies": fuentes_mod.PROXY_DIAG}
+            "proxies": fuentes_mod.PROXY_DIAG,
+            "cobertura": cobertura_mod.COBERTURA}
 
 
 @app.get("/api/partidos")
@@ -160,18 +165,27 @@ def partidos(q: str = Query("", max_length=80), limite: int = Query(20, ge=1, le
         conn.close()
     salida, vistos = [], []
 
+    def _mismo(n1: str, n2: str) -> bool:
+        """El mismo jugador escrito de dos formas ("Jiri Lehecka" / "Lehecka")."""
+        t1 = {x for x in normalizar(n1).split() if len(x) > 1}
+        t2 = {x for x in normalizar(n2).split() if len(x) > 1}
+        return bool((apellidos(n1) & t2) or (apellidos(n2) & t1))
+
     def _duplicado(f) -> bool:
-        """El mismo partido registrado dos veces en FullTenis (dos vías, horas
-        distintas): mismos dos jugadores y menos de 12 h de diferencia."""
-        par = frozenset(" ".join(sorted(normalizar(n).split())) for n in (f["jugador1"], f["jugador2"]))
+        """El mismo partido ya listado: mismos dos jugadores (por apellidos, en
+        cualquier orden) y menos de 12 h de diferencia; si una de las dos fechas
+        no trae hora, basta con los jugadores."""
+        a, b = f["jugador1"], f["jugador2"]
+        fecha = str(f["fecha"] or "")
         try:
-            t = datetime.fromisoformat(str(f["fecha"]).replace("Z", "+00:00")[:19])
+            t = datetime.fromisoformat(fecha.replace("Z", "+00:00")[:19]) if len(fecha) > 10 else None
         except ValueError:
             t = None
-        for par_v, t_v in vistos:
-            if par_v == par and (t is None or t_v is None or abs((t - t_v).total_seconds()) <= 12 * 3600):
+        for (x, y), t_v in vistos:
+            mismo_par = (_mismo(a, x) and _mismo(b, y)) or (_mismo(a, y) and _mismo(b, x))
+            if mismo_par and (t is None or t_v is None or abs((t - t_v).total_seconds()) <= 12 * 3600):
                 return True
-        vistos.append((par, t))
+        vistos.append(((a, b), t))
         return False
 
     for f in filas:
@@ -185,6 +199,41 @@ def partidos(q: str = Query("", max_length=80), limite: int = Query(20, ge=1, le
                            "hora_conocida": bool(f["hora_conocida"])})
             if len(salida) >= limite:
                 break
+    # Partidos que tienen las CASAS y FullTenis no (UTR, ITF que falten...). Se
+    # guardan como partido "casas" para poder resolverlos igual que los demás.
+    if len(salida) < limite:
+        extra = []
+        for metodo, f_ in fuentes_mod.FUENTES.items():
+            for ev in list(f_._eventos):
+                if len(salida) + len(extra) >= limite:
+                    break
+                j1, j2 = str(ev.get("j1") or ""), str(ev.get("j2") or "")
+                if not (j1 and j2) or "/" in j1 + j2:
+                    continue
+                torneo = str(ev.get("torneo") or "")
+                if not all(p in normalizar(f"{j1} {j2} {torneo}") for p in palabras):
+                    continue
+                inicio = str(ev.get("inicio") or "")
+                if _duplicado({"jugador1": j1, "jugador2": j2, "fecha": inicio}):
+                    continue
+                fecha = inicio if len(inicio) >= 10 else datetime.now(timezone.utc).date().isoformat()
+                fid = f"casa:{metodo}:{ev.get('id')}"
+                extra.append({"fixture_id": fid, "fecha": fecha, "jugador1": j1, "jugador2": j2,
+                              "torneo": torneo, "genero": "", "_casa": f_.nombre})
+        if extra:
+            conn = _conn()
+            try:
+                for x in extra:
+                    sync.guardar_fixture(conn, x, "casas")
+                conn.commit()
+            finally:
+                conn.close()
+            for x in extra:
+                salida.append({"clave": clave_partido(x["fixture_id"], x["fecha"], x["jugador1"], x["jugador2"]),
+                               "jugador1": x["jugador1"], "jugador2": x["jugador2"],
+                               "torneo": (x["torneo"] + " · " if x["torneo"] else "") + f"desde {x['_casa']}",
+                               "categoria": categoria_mod.deducir(x["torneo"], ""),
+                               "fecha": x["fecha"], "hora_conocida": len(x["fecha"]) > 10})
     return {"partidos": salida}
 
 

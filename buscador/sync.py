@@ -32,6 +32,10 @@ def _ahora() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# Partidos EN JUEGO según FullTenis en la última lectura (para medir cobertura).
+EN_VIVO: list[dict] = []
+
+
 def _estado(conn, clave, valor):
     conn.execute("INSERT OR REPLACE INTO sync_estado (clave, valor) VALUES (?,?)",
                  (clave, str(valor)))
@@ -96,6 +100,9 @@ async def sincronizar_una_vez(conn: sqlite3.Connection, cliente: httpx.AsyncClie
     r = await cliente.get(f"{config.FTR_SERVICE_URL}/ft-intel/en-vivo", headers=cab)
     r.raise_for_status()
     n_vivo = 0
+    EN_VIVO[:] = [{"j1": p.get("home"), "j2": p.get("away"), "liga": p.get("liga") or p.get("tour") or "",
+                   "fecha": str(p.get("primera_vez_visto") or "")}
+                  for p in r.json().get("partidos") or [] if p.get("home") and p.get("away")]
     for p in r.json().get("partidos") or []:
         fecha = str(p.get("primera_vez_visto") or "")
         j1, j2 = p.get("home"), p.get("away")

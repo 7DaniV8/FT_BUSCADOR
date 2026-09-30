@@ -7,7 +7,8 @@ de RankingFTR (shared/categories.py) a propósito: el buscador tiene que poder
 borrarse sin tocar nada de allí, y al revés.
 
 Categorías (las de la matriz de cobertura):
-  ATP · WTA · CHALLENGER · WTA125 · ITF_M · ITF_W · OTRA
+  ATP · WTA · CHALLENGER · WTA125 · ITF_M · ITF_W · UTR · OTRA
+  (UTR, 30/09/2026: UTR Pro Tennis Tour, que listan las casas como FanDuel.)
 """
 from __future__ import annotations
 
@@ -15,9 +16,9 @@ import re
 
 from .claves import normalizar
 
-ATP, WTA, CHALLENGER, WTA125, ITF_M, ITF_W, OTRA = (
-    "ATP", "WTA", "CHALLENGER", "WTA125", "ITF_M", "ITF_W", "OTRA")
-CATEGORIAS = (ATP, WTA, CHALLENGER, WTA125, ITF_M, ITF_W, OTRA)
+ATP, WTA, CHALLENGER, WTA125, ITF_M, ITF_W, UTR, OTRA = (
+    "ATP", "WTA", "CHALLENGER", "WTA125", "ITF_M", "ITF_W", "UTR", "OTRA")
+CATEGORIAS = (ATP, WTA, CHALLENGER, WTA125, ITF_M, ITF_W, UTR, OTRA)
 
 _ITF = re.compile(r"\b(itf|m15|m25|w15|w35|w50|w75|w100|m[0-9]{2,3}|w[0-9]{2,3})\b")
 
@@ -38,6 +39,8 @@ def _es_femenino(genero: str, torneo_n: str) -> bool | None:
 def deducir(torneo: str, genero: str = "") -> str:
     t = normalizar(torneo)
     fem = _es_femenino(genero, t)
+    if re.search(r"\butr\b", t):
+        return UTR
     if "challenger" in t:
         return CHALLENGER
     if "125" in t and (fem or "wta" in t):

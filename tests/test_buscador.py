@@ -1106,6 +1106,40 @@ lista_dup = cli2.get("/api/partidos", params={"q": "lehecka bergs"}, headers=H).
 ok(len(lista_dup) == 1, f"búsqueda: el mismo partido registrado dos veces sale una sola vez ({len(lista_dup)})")
 ok("proxies" in cli2.get("/salud").json(), "/salud incluye el diagnóstico de salida de los proxies")
 
+# UTR: categoría propia y partidos que solo tienen las casas
+from buscador import categoria as categoria_m, cobertura as cobertura_m  # noqa: E402
+ok(categoria_m.deducir("UTR Men Newport Beach USA") == "UTR"
+   and categoria_m.deducir("UTR Women Lincoln USA") == "UTR", "categoría UTR (UTR Pro Tennis Tour)")
+config.FANDUEL_AK = "ak-de-prueba"
+fu.FUENTES["fanduel"]._eventos = [{"id": 36116695, "j1": "Marika Jones", "j2": "Gala Arangio",
+                                   "inicio": _iso(-20), "torneo": "UTR Women Newport Beach USA",
+                                   "en_juego": True, "slug": "marika-jones-v-gala-arangio",
+                                   "comp_slug": "utr-women-newport-beach-usa"}]
+fu.FUENTES["fanduel"]._cuando = _t.monotonic()
+conn.execute("UPDATE provider_catalog SET metodo='fanduel', estado='TESTING', dominios='[\"fanduel.com\"]' "
+             "WHERE id='fanduel_nc'")
+conn.commit()
+lista_utr = cli2.get("/api/partidos", params={"q": "arangio"}, headers=H).json()["partidos"]
+ok(len(lista_utr) == 1 and lista_utr[0]["categoria"] == "UTR" and "desde fanduel" in lista_utr[0]["torneo"],
+   "búsqueda: un partido UTR que solo tiene una casa aparece (categoría UTR, «desde fanduel»)")
+r_utr = res_f("fanduel_nc", lista_utr[0]["clave"])
+ok(r_utr["estado"] == "ENCONTRADO" and r_utr["url"].endswith("-36116695"),
+   "ese partido se abre en la casa como cualquier otro")
+ok(len(cli2.get("/api/partidos", params={"q": "arangio"}, headers=H).json()["partidos"]) == 1,
+   "buscarlo otra vez no lo duplica")
+
+# Cobertura: encontrados y casi-coincidencias sobre los partidos EN JUEGO
+fu.FUENTES["kambi"]._eventos = [{"id": 1, "j1": "Jiri Lehecka", "j2": "Zizou Bergs", "inicio": HOY,
+                                 "torneo": "", "en_juego": True}]
+sync.EN_VIVO[:] = [{"j1": "Jiri Lehecka", "j2": "Zizou Bergs", "liga": "ATP", "fecha": HOY},
+                   {"j1": "Lehecka J.", "j2": "Jugador Distinto", "liga": "ATP", "fecha": HOY},
+                   {"j1": "Nadie Conocido", "j2": "Otro Nadie", "liga": "ITF", "fecha": HOY}]
+cob = cobertura_m.calcular(conn)["por_casa"]["kambi"]
+ok(cob["partidos"] == 3 and cob["encontrados"] == 1 and cob["casi"] == 1 and cob["pct"] == 33,
+   "cobertura: 1 de 3 encontrados y 1 casi-coincidencia (la casa tiene a uno de los dos)")
+ok("cobertura" in cli2.get("/salud").json(), "/salud incluye la cobertura")
+sync.EN_VIVO[:] = []
+
 # CORS: diagnóstico del origen rechazado
 import logging as _lg  # noqa: E402
 _capt = []
