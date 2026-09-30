@@ -1,0 +1,7 @@
+# Nixpacks (Railway): Python como siempre + Tailscale para la salida por Colombia
+# (solo se usa si existe la variable TS_AUTHKEY; ver arrancar.sh).
+[phases.setup]
+nixPkgs = ["...", "tailscale"]
+
+[start]
+cmd = "sh arrancar.sh"

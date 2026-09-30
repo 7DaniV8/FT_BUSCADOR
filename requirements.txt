@@ -1,0 +1,5 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+httpx>=0.27.0
+curl_cffi>=0.7.0   # solo para FUENTES_IMITAR_CHROME (BetMGM, Betano)
+socksio>=1.0.0     # proxies socks5:// (Tailscale) en la conexión normal

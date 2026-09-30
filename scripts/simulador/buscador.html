@@ -1,0 +1,84 @@
+<!-- tabs/buscador.html -->
+  <!-- BOT BUSCADOR (28/09/2026; estilo de las demás pestañas 30/09/2026). La
+       pestaña NO trae datos del servidor: todo lo pide el navegador al servicio
+       BOT_BUSCADOR (buscador.js), con su propio token corto. Si el servicio no
+       está, se muestra el aviso y el resto de FullTenis sigue igual. Usa las
+       clases comunes (tab-intro, ctrl-row, ctrl-btn, go, compare-card, warn,
+       muted); lo propio va limitado a #panel-buscador. Solo se listan las casas
+       disponibles (activas o en prueba). -->
+  <div class="panel" id="panel-buscador">
+    <style>
+      /* research.css da a TODOS los campos min-height/relleno/borde: aquí las
+         casillas y opciones vuelven a su tamaño (dentro de las píldoras). */
+      #panel-buscador input[type=checkbox],#panel-buscador input[type=radio]{
+        min-height:0;width:14px;height:14px;padding:0;margin:0 7px 0 0;border:0;
+        box-shadow:none;background:none;vertical-align:middle;flex:0 0 auto;
+        accent-color:#000;cursor:pointer}
+      #panel-buscador label.ctrl-btn{display:inline-flex;align-items:center;border-color:#2a3438;
+        margin:0 6px 6px 0;user-select:none}
+      #panel-buscador label.ctrl-btn.active{border-color:var(--accent)}
+      #panel-buscador .ctrl-options{flex-wrap:wrap;flex:none}
+      #panel-buscador .bb-region{color:var(--muted);font-size:.72rem;text-transform:uppercase;
+        letter-spacing:.4px;margin:10px 0 6px}
+      #panel-buscador .bb-region:first-child{margin-top:0}
+      #panel-buscador .compare-card h3{font-size:.9rem;margin-bottom:12px}
+      #panel-buscador .bb-resultados{margin:0 0 16px}
+      #panel-buscador .bb-partido{display:flex;align-items:baseline;gap:10px;padding:9px 12px;
+        margin-bottom:6px;border-radius:6px;background:var(--panel);border:1px solid #2a3438;cursor:pointer}
+      #panel-buscador .bb-partido:hover{border-color:#3a4633}
+      #panel-buscador .bb-partido.active{border-color:var(--accent)}
+      #panel-buscador .bb-partido input{accent-color:var(--accent)}
+      #panel-buscador .bb-partido .muted{margin-left:auto}
+      #panel-buscador .bb-estado{margin-top:4px}
+      #panel-buscador .bb-estado div{padding:8px 12px;background:var(--panel);border-bottom:1px solid #1d2528;
+        font-size:.86rem}
+      #panel-buscador .bb-estado div:first-child{border-radius:6px 6px 0 0}
+      #panel-buscador .bb-estado div:last-child{border-radius:0 0 6px 6px;border-bottom:0}
+      #panel-buscador .bb-respaldo{color:#e3b341}
+      #panel-buscador a.bb-uno{display:inline-block;margin-left:10px;padding:2px 12px;border-radius:5px;
+        background:var(--accent);color:#000;font-weight:700;text-decoration:none;font-size:.8rem}
+      #panel-buscador .bb-opciones{margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+      #panel-buscador .bb-opciones input[type=number],#panel-buscador .bb-asig select{min-height:0;padding:3px 6px}
+      #panel-buscador .bb-asig{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:.83rem}
+      #panel-buscador .bb-nota{margin-top:14px}
+    </style>
+
+    <p class="tab-intro"><strong>BOT BUSCADOR.</strong> Abre el partido en tus casas de apuestas:
+      elige tus casas, busca el partido y pulsa ABRIR.</p>
+    <div class="warn" id="bb-aviso" style="display:none">🔎 BOT BUSCADOR temporalmente no disponible</div>
+
+    <div class="ctrl-row">
+      <input type="search" id="bb-q" placeholder="Buscar partido por jugador (por ejemplo: Damm)"
+             autocomplete="off" maxlength="80" style="flex:1">
+    </div>
+    <div class="bb-resultados" id="bb-resultados"></div>
+
+    <div class="compare-box">
+      <div class="compare-card">
+        <h3>Mis casas</h3>
+        <div id="bb-casas"><span class="muted">Cargando…</span></div>
+        <div class="ctrl-row" style="margin:10px 0 0">
+          <button class="go" id="bb-guardar" type="button">Guardar mis casas</button>
+        </div>
+      </div>
+      <div class="compare-card">
+        <h3>Cómo abrir</h3>
+        <div id="bb-dist"><span class="muted">Cargando…</span></div>
+      </div>
+    </div>
+
+    <div class="ctrl-row" style="margin-top:16px">
+      <button class="go" id="bb-abrir" type="button" disabled>ABRIR EN MIS CASAS</button>
+      <button class="go" id="bb-copiar" type="button" style="display:none">📋 Copiar enlaces</button>
+      <span class="muted" id="bb-copiado"></span>
+    </div>
+    <div class="bb-estado" id="bb-estado"></div>
+
+    <p class="muted bb-nota">
+      FullTenis solo abre la página pública del partido en cada casa. No inicia sesión, no guarda
+      cookies ni toca tus cuentas o apuestas. La primera vez, permite las ventanas emergentes de
+      FullTenis en tu navegador. Si una casa no tiene enlace directo, se abre su sección de tenis y
+      el apellido queda copiado para pegarlo en su buscador. En modo cuadrícula solo coloca las
+      ventanas que abre el propio buscador; la preferencia se guarda en este ordenador.
+    </p>
+  </div>

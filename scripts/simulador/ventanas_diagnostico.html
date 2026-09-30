@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Diagnóstico de ventanas — BOT BUSCADOR</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#12161c;color:#e6e6e6;max-width:980px;margin:24px auto;padding:0 14px}
+ h1{font-size:20px} h2{font-size:15px;color:#8ab4ff;margin-top:22px}
+ button{padding:9px 16px;border-radius:8px;border:0;background:#1f6feb;color:#fff;cursor:pointer;margin:4px 6px 4px 0;font-size:14px}
+ button.sec{background:#30363d} input{width:60px;padding:5px;border-radius:6px;border:1px solid #555;background:#0d1117;color:#e6e6e6}
+ label{margin-right:16px} table{border-collapse:collapse;width:100%;margin-top:8px;font-size:13px}
+ td,th{border-bottom:1px solid #2a2f37;padding:5px 8px;text-align:left} .ok{color:#3fb950} .mal{color:#f85149} .sub{opacity:.7;font-size:13px}
+ pre{background:#0d1117;padding:10px;border-radius:8px;white-space:pre-wrap;font-size:12px}
+</style></head><body>
+<h1>🪟 Diagnóstico de ventanas — BOT BUSCADOR</h1>
+<p class="sub">Abre ventanas VACÍAS de prueba (no carga ninguna casa), las coloca en cuadrícula y mide
+dónde quedaron de verdad. Permite las ventanas emergentes de esta página la primera vez.</p>
+
+<h2>1. Este equipo</h2><div id="equipo" class="sub"></div>
+<button id="detectar">Detectar pantallas</button><span id="pant" class="sub"></span>
+
+<h2>2. Prueba (como al pulsar ABRIR)</h2>
+<label>Casas elegidas <input id="n" type="number" min="1" max="16" value="6"></label>
+<label>Con enlace encontrado <input id="m" type="number" min="1" max="16" value="4"></label>
+<label>Máximo por pantalla <input id="max" type="number" min="1" max="9" value="4"></label>
+<div><button id="probar">Probar distribución</button><button id="cerrar" class="sec">Cerrar ventanas de prueba</button></div>
+<p class="sub">Se abren tantas ventanas como casas elegidas; 1,5 s después se reorganizan solo las "con enlace"
+(como cuando llegan las respuestas) y se cierran las demás. Luego se mide cada una.</p>
+
+<h2>3. Resultado</h2><div id="res" class="sub">—</div><table id="tabla"></table>
+<p><button id="copiar" class="sec">Copiar resultado para enviarlo</button> <span id="copiado" class="sub"></span></p>
+<pre id="det"></pre>
+<script src="ventanas.js"></script>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)}, V=window.FTVentanas, PANT=null, VENT=[], INFORME='';
+  var ua=navigator.userAgent, nav=/Edg\//.test(ua)?'Edge':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'?';
+  var so=/Mac/.test(navigator.platform||ua)?'macOS':/Win/.test(navigator.platform||ua)?'Windows':(navigator.platform||'?');
+  $('equipo').textContent='Navegador: '+nav+' · Sistema: '+so+' · Varios monitores (getScreenDetails): '+
+    (('getScreenDetails' in window)?'disponible':'NO disponible (solo esta pantalla)')+' · Pantalla actual: '+
+    screen.availWidth+'×'+screen.availHeight+' en ('+(screen.availLeft||0)+','+(screen.availTop||0)+') · escala '+devicePixelRatio;
+  function mostrarPant(d){ PANT=d.lista; $('pant').textContent='  → '+d.lista.length+' pantalla(s): '+d.lista.map(function(p,i){
+      return (i+1)+') '+p.w+'×'+p.h+' en ('+p.x+','+p.y+')'+(p.nombre?' '+p.nombre:'')}).join(' · ')+(d.multi?'':' (solo la actual)'); }
+  V.detectarPantallas(false).then(mostrarPant);
+  $('detectar').onclick=function(){ V.detectarPantallas(true).then(mostrarPant, function(e){ $('pant').textContent=' ✗ '+e; }); };
+  function cerrar(){ VENT.forEach(function(v){ try{ v.w.close() }catch(e){} }); VENT=[]; }
+  $('cerrar').onclick=cerrar;
+  $('probar').onclick=function(){
+    cerrar();
+    var n=Math.max(1,+$('n').value), m=Math.min(n,Math.max(1,+$('m').value)), max=Math.max(1,+$('max').value);
+    var casas=[]; for(var i=1;i<=n;i++) casas.push({id:'casa'+i});
+    var pant=PANT||[{x:screen.availLeft||0,y:screen.availTop||0,w:screen.availWidth,h:screen.availHeight}];
+    var inicial=V.distribuir(casas,pant,max), bloqueadas=0;
+    // 1) En el mismo clic: una ventana vacía por casa elegida
+    casas.forEach(function(c){ var r=inicial[c.id];
+      var w=window.open('about:blank','ft_diag_'+c.id,'popup,left='+r.x+',top='+r.y+',width='+r.w+',height='+r.h);
+      if(!w){ bloqueadas++; return; }
+      V.colocar(w,r);
+      try{ w.document.title=c.id; w.document.body.style.cssText='margin:0;font:28px system-ui;background:#264;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh';
+           w.document.body.textContent=c.id.replace('casa','Casa '); }catch(e){}
+      VENT.push({id:c.id,w:w}); });
+    if(bloqueadas){ $('res').innerHTML='<span class="mal">El navegador bloqueó '+bloqueadas+' ventana(s): permite las ventanas emergentes y repite.</span>'; }
+    // 2) "Llegan las respuestas": solo m con enlace → cuadrícula final; el resto se cierra
+    setTimeout(function(){
+      var usar=casas.slice(0,m), fin=V.distribuir(usar,pant,max);
+      VENT=VENT.filter(function(v){ if(fin[v.id]){ V.colocar(v.w,fin[v.id]); return true } try{v.w.close()}catch(e){} return false; });
+      // 3) Medir
+      setTimeout(function(){
+        var filas=[], buenas=0;
+        VENT.forEach(function(v){ var e=fin[v.id], w=v.w, x=w.screenX, y=w.screenY, a=w.outerWidth, h=w.outerHeight;
+          var d=Math.max(Math.abs(x-e.x),Math.abs(y-e.y),Math.abs(a-e.w),Math.abs(h-e.h)), bien=d<=12; if(bien) buenas++;
+          filas.push({id:v.id,p:e.pantalla,esp:e.x+','+e.y+' '+e.w+'×'+e.h,real:x+','+y+' '+a+'×'+h,d:d,bien:bien}); });
+        $('res').innerHTML=(buenas===filas.length?'<span class="ok">✅ ':'<span class="mal">⚠️ ')+buenas+' de '+filas.length+
+          ' ventanas en su sitio (±12 px)</span>';
+        $('tabla').innerHTML='<tr><th>Ventana</th><th>Pantalla</th><th>Esperado</th><th>Real</th><th>Desvío</th></tr>'+
+          filas.map(function(f){return '<tr><td>'+f.id+'</td><td>'+f.p+'</td><td>'+f.esp+'</td><td>'+f.real+'</td><td class="'+(f.bien?'ok':'mal')+'">'+f.d+' px</td></tr>'}).join('');
+        INFORME=$('equipo').textContent+'\n'+$('pant').textContent+'\nElegidas '+n+', con enlace '+m+', máx '+max+'\n'+
+          $('res').textContent+'\n'+filas.map(function(f){return f.id+' P'+f.p+' esperado '+f.esp+' real '+f.real+' desvío '+f.d}).join('\n');
+        $('det').textContent=INFORME;
+      },800);
+    },1500);
+  };
+  $('copiar').onclick=function(){ try{ navigator.clipboard.writeText(INFORME).then(function(){ $('copiado').textContent='copiado' }) }catch(e){ window.prompt('Copia:',INFORME) } };
+})();
+</script></body></html>
