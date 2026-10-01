@@ -1128,17 +1128,35 @@ ok(r_utr["estado"] == "ENCONTRADO" and r_utr["url"].endswith("-36116695"),
 ok(len(cli2.get("/api/partidos", params={"q": "arangio"}, headers=H).json()["partidos"]) == 1,
    "buscarlo otra vez no lo duplica")
 
-# Cobertura: encontrados y casi-coincidencias sobre los partidos EN JUEGO
-fu.FUENTES["kambi"]._eventos = [{"id": 1, "j1": "Jiri Lehecka", "j2": "Zizou Bergs", "inicio": HOY,
-                                 "torneo": "", "en_juego": True}]
-sync.EN_VIVO[:] = [{"j1": "Jiri Lehecka", "j2": "Zizou Bergs", "liga": "ATP", "fecha": HOY},
-                   {"j1": "Lehecka J.", "j2": "Jugador Distinto", "liga": "ATP", "fecha": HOY},
-                   {"j1": "Nadie Conocido", "j2": "Otro Nadie", "liga": "ITF", "fecha": HOY}]
-cob = cobertura_m.calcular(conn)["por_casa"]["kambi"]
-ok(cob["partidos"] == 3 and cob["encontrados"] == 1 and cob["casi"] == 1 and cob["pct"] == 33,
-   "cobertura: 1 de 3 encontrados y 1 casi-coincidencia (la casa tiene a uno de los dos)")
+# Cobertura (rehecha con datos reales): base = partidos de FullTenis que una casa marca EN JUEGO
+for _m in fu.FUENTES:
+    fu.FUENTES[_m]._eventos = []
+sync.guardar_fixture(conn, {"fixture_id": "cob-1", "fecha": HOY, "jugador1": "Jiri Lehecka", "jugador2": "Zizou Bergs",
+                            "torneo": "ATP Tokyo", "genero": "M"}, "fixtures")
+sync.guardar_fixture(conn, {"fixture_id": "cob-2", "fecha": HOY, "jugador1": "Hubert Hurkacz",
+                            "jugador2": "Alejandro Davidovich Fokina", "torneo": "ATP Tokyo", "genero": "M"}, "fixtures")
+sync.guardar_fixture(conn, {"fixture_id": "cob-3", "fecha": _iso(-600), "jugador1": "Ya Termino", "jugador2": "Partido Viejo",
+                            "torneo": "ITF", "genero": "M"}, "fixtures")
+conn.commit()
+fu.FUENTES["kambi"]._eventos = [  # en juego: Lehecka-Bergs y un UTR que FullTenis no tiene
+    {"id": 1, "j1": "Jiri Lehecka", "j2": "Zizou Bergs", "inicio": HOY, "torneo": "Tokio", "en_juego": True},
+    {"id": 2, "j1": "Marika Jones", "j2": "Gala Arangio", "inicio": HOY, "torneo": "UTR Women", "en_juego": True}]
+fu.FUENTES["fanduel"]._eventos = [  # en juego Hurkacz-Davidovich; Hurkacz-Tien es OTRO partido (siguiente ronda)
+    {"id": 3, "j1": "Hubert Hurkacz", "j2": "Alejandro Davidovich Fokina", "inicio": HOY, "torneo": "", "en_juego": True,
+     "slug": "x", "comp_slug": "y"},
+    {"id": 4, "j1": "Learner Tien", "j2": "Hubert Hurkacz", "inicio": HOY, "torneo": "", "en_juego": False,
+     "slug": "x", "comp_slug": "y"}]
+cob = cobertura_m.calcular(conn)
+ok(cob["partidos"] == 2, f"cobertura: base = solo los partidos que una casa marca en juego (2, no el terminado): {cob['partidos']}")
+ok(cob["por_casa"]["kambi"]["encontrados"] == 1 and cob["por_casa"]["kambi"]["pct"] == 50
+   and cob["por_casa"]["fanduel"]["pct"] == 50, "cobertura: cada casa encuentra 1 de 2 (50 %)")
+ok(cob["por_casa"]["kambi"]["sin_emparejar"] == 1 and "Arangio" in cob["por_casa"]["kambi"]["ejemplos_sin_emparejar"][0],
+   "cobertura: el partido UTR en juego que FullTenis no tiene sale en «sin emparejar»")
+ok(cob["por_casa"]["fanduel"]["sin_emparejar"] == 0,
+   "cobertura: la siguiente ronda del mismo jugador ya NO cuenta como fallo")
 ok("cobertura" in cli2.get("/salud").json(), "/salud incluye la cobertura")
-sync.EN_VIVO[:] = []
+for _m in fu.FUENTES:
+    fu.FUENTES[_m]._eventos = []
 
 # CORS: diagnóstico del origen rechazado
 import logging as _lg  # noqa: E402

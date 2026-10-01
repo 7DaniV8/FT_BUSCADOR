@@ -320,7 +320,11 @@ with sync_playwright() as pw:
     PETICIONES.clear()
     limpiar_mapa()
     abrir(pg, ven)
-    check("2", "segunda vez: 0 lecturas de las fuentes (caché)", not PETICIONES, str(PETICIONES))
+    # Caesars no tiene el partido: si han pasado > 15 s, el BOT relee su lista a
+    # propósito (por si el partido acaba de empezar). Lo que se comprueba aquí es la
+    # caché de las casas que SÍ lo tenían.
+    check("2", "segunda vez: 0 lecturas de las casas que ya tenían el partido (caché)",
+          not [h for h in PETICIONES if "americanwagering" not in h], str(PETICIONES))
 
     # Flujo MTO: partido que empezó después de la última lectura
     KAMBI_EV.append(_kambi(1029400003, "Nuevo Jugador", "Recien Empezado"))
