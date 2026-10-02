@@ -41,6 +41,7 @@ cantidades. Si una casa exige login o ubicación para ver el evento, se avisa
 | `FUENTES_ESTADO_US` | Estado de EE. UU. para FanDuel y Caesars (por defecto `nc`) |
 | `FUENTES_TTL_S` | Cada cuánto se relee cada fuente (por defecto 45 s) |
 | `KAMBI_HOST`, `KAMBI_OPERADOR` | Kambi (por defecto `us.offering-api.kambicdn.com`, `betplay`) |
+| `CASAS_OCULTAS` | Casas que no aparecen en la pestaña ni se leen. Por defecto `bet365_nc,caesars_nc`. Para recuperar una, quitarla de la lista; para ocultar otra, añadirla |
 | `FUENTES_IMITAR_CHROME` | Fuentes que se leen con la huella de conexión de Chrome (`curl_cffi`). Por defecto `betmgm` (solo responde así). Vacío = desactivado |
 | `FUENTES_PROXY` | **Secreto.** Proxy por fuente: `betano=http://usuario:clave@host:puerto`. Betano solo responde a IPs colombianas: con el servidor en EE. UU. necesita un proxy RESIDENCIAL en Colombia. Nunca se muestra en logs ni en `/salud` |
 | `BETANO_HOST` | Web de Betano de la que se LEE (cualquier país que responda desde el servidor; mismo número de partido en todos) |

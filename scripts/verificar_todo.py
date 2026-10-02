@@ -50,6 +50,7 @@ CLAVE_FALSA = "AK-FANDUEL-QUE-NUNCA-DEBE-SALIR-EN-LOGS"
 SECRETO = "secreto-de-verificacion-local"
 TMP = Path(tempfile.mkdtemp())
 os.environ.update({
+    "CASAS_OCULTAS": "",   # los escenarios usan Caesars para probar el respaldo
     "FANDUEL_AK": CLAVE_FALSA, "ODDSPAPI_API_KEY": "", "BUSCADOR_DB_PATH": str(TMP / "v.db"),
     "BUSCADOR_TOKEN_SECRET": SECRETO, "ALLOWED_ORIGINS": f"http://127.0.0.1:{P_FT}",
     "SYNC_ACTIVO": "0", "FTR_SERVICE_URL": "http://127.0.0.1:1",

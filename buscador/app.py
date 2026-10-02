@@ -255,7 +255,10 @@ def mis_casas(u: dict = Depends(usuario)):
             "JOIN provider_catalog p ON p.id = up.provider_id "
             "WHERE up.usuario_id = ? AND up.habilitado = 1 ORDER BY p.nombre",
             (str(u["sub"]),)).fetchall()
-        return {"providers": [dict(f) for f in filas]}
+        # Las casas ocultas o que dejaron de estar disponibles desaparecen solas.
+        return {"providers": [dict(f) for f in filas
+                              if f["id"] not in config.CASAS_OCULTAS
+                              and f["estado"] in catalogo.SELECCIONABLES]}
     finally:
         conn.close()
 
@@ -325,6 +328,11 @@ async def resolver(clave: str = Query(..., max_length=40), provider: str = Query
         if prov and destino and _url_permitida(destino, prov["dominios"]):
             r["respaldo"] = destino
     est = (estado or "").lower()
+    operan = catalogo.ESTADOS_CASA.get(provider)
+    if est in ESTADOS_US and operan is not None and est not in operan:
+        # La casa no opera en el estado del usuario: decirlo, sin abrir nada.
+        return {"provider": r.get("provider", provider), "nombre": r.get("nombre", provider),
+                "estado": NO_DISPONIBLE, "detalle": f"no opera en {est.upper()}"}
     if est in ESTADOS_US:
         for k in ("url", "respaldo"):
             if r.get(k):

@@ -21,6 +21,7 @@ os.environ["BUSCADOR_DB_PATH"] = str(_TMP / "b.db")
 os.environ["BUSCADOR_TOKEN_SECRET"] = "clave-de-prueba"
 os.environ["ALLOWED_ORIGINS"] = "https://fulltenis.example"
 os.environ["SYNC_ACTIVO"] = "0"
+os.environ["CASAS_OCULTAS"] = ""      # las pruebas usan todas las casas; el ocultamiento se prueba aparte
 os.environ["FTR_SERVICE_URL"] = "https://ftr.example"
 os.environ["FTR_LECTURA_SECRET"] = "lectura-de-prueba"
 os.environ["TIMEOUT_PROVIDER_S"] = "1"
@@ -1142,16 +1143,19 @@ ok(q_hr.get("sports") == "TENNIS" and q_hr.get("inplay") == "true" and q_hr.get(
    "Hard Rock: pide el tenis en vivo de su estado, sin cookies")
 ok(len(fu.FUENTES["hardrock"]._eventos) == 1, "Hard Rock: sin dobles")
 r_365 = res_f("bet365_nc", clave_hr)
-ok(r_365["estado"] == "NO_ENCONTRADO" and r_365.get("respaldo") == "https://www.nc.bet365.com/#/AS/B13/",
-   "bet365: casa «solo sección de tenis» (abre su tenis con el apellido copiado)")
+ok(r_365["estado"] == "NO_ENCONTRADO" and r_365.get("respaldo") == "https://www.nc.bet365.com/#/IP/B13",
+   "bet365: casa «solo sección de tenis» (abre su tenis EN VIVO con el apellido copiado)")
 ok(any(c["id"] == "bet365_nc" and c["seleccionable"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]),
    "bet365 y Hard Rock se pueden elegir en la pestaña")
 
 # Estado del usuario: BetMGM y bet365 tienen una web por estado
+r_nj = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "bet365_nc", "estado": "nj"}, headers=H).json()
+ok(r_nj.get("respaldo") == "https://www.nj.bet365.com/#/IP/B13", "estado=nj: bet365 en www.nj.bet365.com")
 r_fl = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "bet365_nc", "estado": "fl"}, headers=H).json()
-ok(r_fl.get("respaldo") == "https://www.fl.bet365.com/#/AS/B13/", "estado=fl: bet365 en www.fl.bet365.com")
+ok(r_fl["estado"] == "NO_DISPONIBLE" and "FL" in r_fl.get("detalle", "") and not r_fl.get("respaldo"),
+   "estado=fl: bet365 dice que no opera en Florida y no abre nada")
 r_mal = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "bet365_nc", "estado": "zz"}, headers=H).json()
-ok(r_mal.get("respaldo") == "https://www.nc.bet365.com/#/AS/B13/", "estado desconocido: se ignora")
+ok(r_mal.get("respaldo") == "https://www.nc.bet365.com/#/IP/B13", "estado desconocido: se ignora")
 r_hr_fl = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "hardrock_fl", "estado": "nj"}, headers=H).json()
 ok(r_hr_fl.get("url") == "https://app.hardrock.bet/competition/wtaBeijing/5750617385245737388",
    "Hard Rock: misma dirección en cualquier estado")
@@ -1213,6 +1217,29 @@ ok(cob["por_casa"]["fanduel"]["sin_emparejar"] == 0,
 ok("cobertura" in cli2.get("/salud").json(), "/salud incluye la cobertura")
 for _m in fu.FUENTES:
     fu.FUENTES[_m]._eventos = []
+
+# Casas OCULTAS: fuera de la pestaña, de "Mis casas" y sin leer su web
+cli2.put("/api/mis-casas", json={"providers": ["betplay_co", "bet365_nc", "caesars_nc"]}, headers=H)
+config.CASAS_OCULTAS = {"bet365_nc", "caesars_nc", "betano_co"}
+ids_cat = {c["id"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]}
+ok(not ({"bet365_nc", "caesars_nc", "betano_co"} & ids_cat) and "betplay_co" in ids_cat,
+   "ocultas: bet365, Caesars y Betano no salen en la pestaña")
+ok([c["id"] for c in cli2.get("/api/mis-casas", headers=H).json()["providers"]] == ["betplay_co"],
+   "ocultas: desaparecen de «Mis casas» de quien ya las tenía guardadas")
+ok(cli2.put("/api/mis-casas", json={"providers": ["caesars_nc"]}, headers=H).status_code == 400,
+   "ocultas: no se pueden volver a elegir")
+ok(res_f("bet365_nc", clave_hr)["estado"] == "NO_DISPONIBLE", "ocultas: el resolver las da por no disponibles")
+ok(not fu.FUENTES["caesars"].configurada() and not fu.FUENTES["betano"].configurada()
+   and fu.FUENTES["kambi"].configurada(), "ocultas: el BOT deja de leer Caesars y Betano (Kambi sigue)")
+config.CASAS_OCULTAS = set()
+ok("betano_co" in {c["id"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]},
+   "quitar una casa de CASAS_OCULTAS la recupera")
+os.environ.pop("CASAS_OCULTAS", None)
+import importlib as _il  # noqa: E402
+_cfg = _il.reload(__import__("buscador.config", fromlist=["x"]))
+ok(_cfg.CASAS_OCULTAS == {"bet365_nc", "caesars_nc"},
+   "por defecto (sin variable) quedan ocultas bet365 y Caesars; Betano se queda")
+_cfg.CASAS_OCULTAS = set()
 
 # CORS: diagnóstico del origen rechazado
 import logging as _lg  # noqa: E402

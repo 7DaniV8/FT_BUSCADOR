@@ -158,7 +158,11 @@ class FuenteEnVivo(Provider):
         self._transporte = None               # las pruebas lo sustituyen
 
     def configurada(self) -> bool:
-        return True
+        return not self.oculta()
+
+    def oculta(self) -> bool:
+        """Todas las casas de esta fuente están ocultas (CASAS_OCULTAS): no se lee su web."""
+        return bool(self.ENLACES) and all(c in config.CASAS_OCULTAS for c in self.ENLACES)
 
     def _proxy(self) -> str | None:
         return config.FUENTES_PROXY.get(self.metodo)
@@ -293,7 +297,7 @@ class FanDuel(FuenteEnVivo):
     ENLACES = {"fanduel_nc": "https://sportsbook.fanduel.com/tennis/{comp_slug}/{slug}-{id}"}
 
     def configurada(self) -> bool:
-        return bool(config.FANDUEL_AK)
+        return bool(config.FANDUEL_AK) and not self.oculta()
 
     async def _cargar(self, cli):
         if not config.FANDUEL_AK:
@@ -425,7 +429,7 @@ class BetMGM(FuenteEnVivo):
                "bwin_co": "https://sports.bwin.co/es/sports/eventos/{id}"}
 
     def configurada(self) -> bool:
-        return bool(config.BETMGM_ACCESSID)
+        return bool(config.BETMGM_ACCESSID) and not self.oculta()
 
     async def _cargar(self, cli):
         if not config.BETMGM_ACCESSID:

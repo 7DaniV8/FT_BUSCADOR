@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+
+from . import config
 from datetime import datetime, timezone
 
 ACTIVE, TESTING, COMING_SOON = "ACTIVE", "TESTING", "COMING_SOON"
@@ -60,8 +62,9 @@ SEMILLA = [
 
     # ── North Carolina ───────────────────────────────────────────────
     _p("bet365_nc", "bet365", NC, TESTING, "respaldo", ["bet365.com"],
-       nota="Solo sección de tenis: bet365 usa un formato propio cifrado y una protección "
-            "antibots que no permiten leer sus partidos (captura del 02/10/2026)."),
+       nota="Solo tenis EN VIVO: bet365 usa un formato propio cifrado y una protección "
+            "antibots; los enlaces de OddsPapi no abren el partido una vez empezado "
+            "(probado el 02/10/2026)."),
     _p("hardrock_fl", "Hard Rock Bet", FL, TESTING, "hardrock", ["hardrock.bet"],
        nota="Datos públicos de su web (tenis en vivo, por estado: HARDROCK_CHANNEL/SEGMENT)."),
     _p("caesars_nc", "Caesars Sportsbook", NC, TESTING, "caesars", ["caesars.com"],
@@ -109,6 +112,14 @@ SEMILLA = [
 # Sección de tenis de cada casa: adónde ir si no hay enlace directo al partido
 # (el usuario busca el apellido, que la pestaña deja copiado). Solo se entrega
 # si cae dentro de los dominios de la casa (lo comprueba app.py).
+# Estados de EE. UU. donde opera cada casa con web por estado (fuente: listas
+# públicas de septiembre de 2026). Si el usuario elige otro, la casa dice "no
+# opera en tu estado" en vez de abrir una ventana inútil. Actualizar al cambiar.
+ESTADOS_CASA = {
+    "bet365_nc": {"az", "co", "il", "in", "ia", "ks", "ky", "la", "md", "mi", "mo", "nj", "nc",
+                  "oh", "pa", "tn", "va"},
+}
+
 RESPALDO = {
     "betplay_co": "https://tienda.betplay.com.co/apuestas#filter/tennis",
     "rushbet_co": "https://www.rushbet.co/?page=sportsbook#filter/tennis",
@@ -121,7 +132,8 @@ RESPALDO = {
     "caesars_nc": "https://sportsbook.caesars.com/tennis",
     "kalshi": "https://kalshi.com/sports/tennis",
     "polymarket": "https://polymarket.com/sports/tennis",
-    "bet365_nc": "https://www.nc.bet365.com/#/AS/B13/",
+    # bet365: su tenis EN VIVO (tras un MTO el partido ya está en juego).
+    "bet365_nc": "https://www.nc.bet365.com/#/IP/B13",
     "hardrock_fl": "https://app.hardrock.bet/",
 }
 
@@ -182,6 +194,8 @@ def listar(conn: sqlite3.Connection, region: str | None = None) -> list[dict]:
     salida = []
     for f in conn.execute(q, args):
         d = dict(f)
+        if d["id"] in config.CASAS_OCULTAS:
+            continue                          # oculta: ni se lista ni se elige
         d["dominios"] = json.loads(d["dominios"] or "[]")
         d["seleccionable"] = d["estado"] in SELECCIONABLES
         salida.append(d)
@@ -194,4 +208,6 @@ def obtener(conn: sqlite3.Connection, provider_id: str) -> dict | None:
         return None
     d = dict(f)
     d["dominios"] = json.loads(d["dominios"] or "[]")
+    if d["id"] in config.CASAS_OCULTAS:
+        d["estado"] = DISABLED                # oculta: el resolver la trata como no disponible
     return d
