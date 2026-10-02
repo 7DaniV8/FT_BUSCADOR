@@ -292,9 +292,25 @@ def _url_permitida(url: str, dominios: list[str]) -> bool:
     return p.scheme == "https" and any(host == d or host.endswith("." + d) for d in dominios)
 
 
+# Estados de EE. UU. (y DC) admitidos en el parámetro `estado`.
+ESTADOS_US = {"al", "ak", "az", "ar", "ca", "co", "ct", "de", "dc", "fl", "ga", "hi", "id", "il", "in",
+              "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh",
+              "nj", "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut",
+              "vt", "va", "wa", "wv", "wi", "wy"}
+_HOST_POR_ESTADO = __import__("re").compile(r"^https://www\.[a-z]{2}\.(betmgm|bet365)\.com/")
+
+
+def _url_estado(url: str | None, estado: str | None) -> str | None:
+    """BetMGM y bet365 tienen una web por estado (www.nc.betmgm.com, www.il.bet365.com…):
+    se cambia el estado de la dirección por el del usuario. El resto no cambia."""
+    if not url or not estado:
+        return url
+    return _HOST_POR_ESTADO.sub(lambda m: f"https://www.{estado}.{m.group(1)}.com/", url)
+
+
 @app.get("/api/resolver")
 async def resolver(clave: str = Query(..., max_length=40), provider: str = Query(..., max_length=40),
-                   u: dict = Depends(usuario)):
+                   estado: str | None = Query(None, max_length=2), u: dict = Depends(usuario)):
     """UNA casa. Si no hay enlace directo al partido (no encontrado, dudoso o
     error de la fuente), añade `respaldo`: la sección de tenis de esa casa,
     solo si pertenece a sus dominios. Nunca en casas pendientes/no disponibles."""
@@ -308,6 +324,11 @@ async def resolver(clave: str = Query(..., max_length=40), provider: str = Query
         destino = catalogo.RESPALDO.get(provider)
         if prov and destino and _url_permitida(destino, prov["dominios"]):
             r["respaldo"] = destino
+    est = (estado or "").lower()
+    if est in ESTADOS_US:
+        for k in ("url", "respaldo"):
+            if r.get(k):
+                r[k] = _url_estado(r[k], est)
     return r
 
 
@@ -334,6 +355,9 @@ async def _resolver(clave: str, provider: str):
             return {**base, "estado": PENDIENTE, "detalle": "sin OpticOdds"}
         if prov["metodo"] == "oddspapi" and not config.ODDSPAPI_API_KEY:
             return {**base, "estado": PENDIENTE, "detalle": "sin OddsPapi"}
+        if prov["metodo"] == "respaldo":
+            # Casa sin lectura posible (p. ej. bet365): siempre su sección de tenis.
+            return {**base, "estado": NO_ENCONTRADO, "detalle": "solo sección de tenis"}
         f_ = fuentes_mod.FUENTES.get(prov["metodo"])
         if f_ is not None and not f_.configurada():
             return {**base, "estado": PENDIENTE, "detalle": f"falta configurar {f_.nombre}"}

@@ -30,7 +30,8 @@ from .resolver import ENCONTRADO, Partido
 log = logging.getLogger("buscador.cobertura")
 CASAS_DE = {"kambi": "BetPlay + Rushbet", "fanduel": "FanDuel", "draftkings": "DraftKings",
             "caesars": "Caesars", "kalshi": "Kalshi", "betmgm": "BetMGM + Bwin",
-            "polymarket": "Polymarket", "betano": "Betano", "wplay": "Wplay"}
+            "polymarket": "Polymarket", "betano": "Betano", "wplay": "Wplay",
+            "hardrock": "Hard Rock Bet"}
 COBERTURA: dict = {}
 
 

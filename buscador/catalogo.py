@@ -35,7 +35,12 @@ ESTADOS = (ACTIVE, TESTING, COMING_SOON, NOT_AVAILABLE_REGION, MAINTENANCE,
 # Estados que un usuario puede marcar en "Mis casas".
 SELECCIONABLES = (ACTIVE, TESTING)
 
-CO, NC, GLOBAL = "CO", "US-NC", "GLOBAL"
+CO, GLOBAL = "CO", "GLOBAL"
+# EE. UU. es UNA región (02/10/2026): las direcciones de casi todas las casas son
+# iguales en todos los estados; las que cambian (BetMGM, bet365) las ajusta el
+# resolver al estado que elige el usuario (parámetro `estado`).
+US = "US"
+NC = FL = US
 
 
 def _p(id_, nombre, region, estado, metodo, dominios=(), nota=""):
@@ -54,8 +59,11 @@ SEMILLA = [
        "API oficial pública (Gamma). Enlace polymarket.com/event/<slug>."),
 
     # ── North Carolina ───────────────────────────────────────────────
-    _p("bet365_nc", "bet365", NC, PROVIDER_PENDING, "opticodds",
-       nota="OddsPapi solo da un enlace genérico de bet365: depende de OpticOdds."),
+    _p("bet365_nc", "bet365", NC, TESTING, "respaldo", ["bet365.com"],
+       nota="Solo sección de tenis: bet365 usa un formato propio cifrado y una protección "
+            "antibots que no permiten leer sus partidos (captura del 02/10/2026)."),
+    _p("hardrock_fl", "Hard Rock Bet", FL, TESTING, "hardrock", ["hardrock.bet"],
+       nota="Datos públicos de su web (tenis en vivo, por estado: HARDROCK_CHANNEL/SEGMENT)."),
     _p("caesars_nc", "Caesars Sportsbook", NC, TESTING, "caesars", ["caesars.com"],
        "Datos públicos de su web (calendario de tenis). Enlace /tennis/<id>/<a-vs-b>."),
     _p("fanduel_nc", "FanDuel", NC, TESTING, "fanduel", ["fanduel.com"],
@@ -113,6 +121,8 @@ RESPALDO = {
     "caesars_nc": "https://sportsbook.caesars.com/tennis",
     "kalshi": "https://kalshi.com/sports/tennis",
     "polymarket": "https://polymarket.com/sports/tennis",
+    "bet365_nc": "https://www.nc.bet365.com/#/AS/B13/",
+    "hardrock_fl": "https://app.hardrock.bet/",
 }
 
 # Filas ya sembradas con la configuración anterior. Solo se actualizan si
@@ -120,6 +130,7 @@ RESPALDO = {
 # cambio hecho a mano tras las pruebas nunca se pisa.
 MIGRACIONES = {
     "kalshi": [("kalshi_api", TESTING), ("oddspapi", TESTING), ("ninguno", PROVIDER_PENDING)],
+    "bet365_nc": [("opticodds", PROVIDER_PENDING)],
     "polymarket": [("polymarket_gamma", TESTING), ("oddspapi", TESTING), ("ninguno", PROVIDER_PENDING)],
     "fanduel_nc": [("opticodds", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "betmgm_nc": [("opticodds", PROVIDER_PENDING), ("oddspapi", TESTING), ("ninguno", PROVIDER_PENDING)],
@@ -144,6 +155,9 @@ def sembrar(conn: sqlite3.Connection) -> int:
             (p["id"], p["nombre"], p["region"], p["estado"], p["metodo"],
              json.dumps(p["dominios"]), None, p["nota"]))
         nuevos += cur.rowcount
+        if p["region"] == US:                 # bases antiguas: US-NC / US-FL → US
+            conn.execute("UPDATE provider_catalog SET region=? WHERE id=? AND region LIKE 'US-%'",
+                         (US, p["id"]))
         for viejo_metodo, viejo_estado in MIGRACIONES.get(p["id"], []):
             conn.execute(
                 "UPDATE provider_catalog SET metodo=?, estado=?, dominios=?, nota=? "

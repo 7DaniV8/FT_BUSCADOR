@@ -51,13 +51,14 @@ os.environ["FANDUEL_AK"] = A.fanduel_ak or ""
 from buscador.providers.fuentes import FUENTES, refrescar_todas  # noqa: E402
 
 _US = {"draftkings": "draftkings_nc", "fanduel": "fanduel_nc", "caesars": "caesars_nc",
-       "betmgm": "betmgm_nc", "kalshi": "kalshi", "polymarket": "polymarket"}
+       "betmgm": "betmgm_nc", "kalshi": "kalshi", "polymarket": "polymarket", "hardrock": "hardrock_fl"}
 _CO = {"kambi": "betplay_co", "betano": "betano_co", "wplay": "wplay_co"}
 CASAS = _US if A.region == "us" else _CO if A.region == "co" else {**_CO, **_US}
 # Casas que salen de cada fuente (para el resumen)
 CASAS_DE = {"kambi": "BetPlay + Rushbet", "betano": "Betano", "wplay": "Wplay",
             "draftkings": "DraftKings", "fanduel": "FanDuel", "caesars": "Caesars",
-            "betmgm": "BetMGM + Bwin CO", "kalshi": "Kalshi", "polymarket": "Polymarket"}
+            "betmgm": "BetMGM + Bwin CO", "kalshi": "Kalshi", "polymarket": "Polymarket",
+            "hardrock": "Hard Rock Bet"}
 
 
 def pais():

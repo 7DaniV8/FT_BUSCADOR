@@ -279,7 +279,10 @@ with sync_playwright() as pw:
     check("2", "📋 Copiar enlaces: el partido y los 4 enlaces directos (sin respaldos)",
           copiado.startswith("🎾 Eduardo Ribeiro vs Pedro Sakamoto") and copiado.count("https://") == 4
           and "caesars" not in copiado, copiado.replace("\n", " | "))
-    check("2", "casas agrupadas por región", pg.locator("#bb-casas .bb-region").count() == 3)
+    check("2", "casas agrupadas por región (Colombia, EE. UU., predicción)",
+          pg.locator("#bb-casas .bb-region").count() == 3)
+    check("2", "selector «Tu estado (EE. UU.)» con Florida por defecto",
+          pg.locator("#bb-estado-us").input_value() == "fl")
     check("2", "hay 3 modos y el de por defecto es 📑 todas a la vez",
           pg.locator("#bb-dist input[name=bb-modo]").count() == 3 and pg.is_checked("#bb-dist input[value=todas]"))
 
@@ -421,9 +424,9 @@ else:
               "no existe: ¿aplicaste RankingFTR_bot_buscador.zip?" if not (rf / rel).exists()
               else "distinto: aplica la última versión de RankingFTR_bot_buscador.zip")
     res = rf / "research/web/templates/research.html"
-    check("3", "research.html pide buscador.js y buscador_ventanas.js ?v=20260930c",
-          res.exists() and "buscador.js?v=20260930c" in res.read_text(encoding="utf-8")
-          and "buscador_ventanas.js?v=20260930c" in res.read_text(encoding="utf-8"))
+    check("3", "research.html pide buscador.js y buscador_ventanas.js ?v=20261002b",
+          res.exists() and "buscador.js?v=20261002b" in res.read_text(encoding="utf-8")
+          and "buscador_ventanas.js?v=20261002b" in res.read_text(encoding="utf-8"))
 
 # ── Resumen ─────────────────────────────────────────────────────────────
 malos = [r for r in RESULTADOS if not r[1]]

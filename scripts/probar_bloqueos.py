@@ -76,6 +76,14 @@ if os.getenv("BETMGM_ACCESSID"):
                    "state": "Live", "offerMapping": "Filtered", "sportIds": "5", "skip": "0",
                    "take": "200", "sortBy": "StartDate"},
         "origen": "https://www.nc.betmgm.com", "extra": {}}
+CASAS["hardrock"] = {
+    "url": "https://api.hardrocksportsbook.com/java-graphql/events",
+    "params": {"channel": "FLORIDA_ONLINE", "segment": "fl", "region": "us", "language": "enus",
+               "sports": "TENNIS", "outright": "false", "inplay": "true",
+               "start": str(int((time.time() - 86400) * 1000)), "sort": "compEventWeightingV2",
+               "sortDesc": "false", "offset": "0", "limit": "50", "includeCount": "true",
+               "includeMarkets": "false"},
+    "origen": "https://app.hardrock.bet", "extra": {}}
 if A.fanduel_ak:
     CASAS["fanduel"] = {
         "url": "https://api.sportsbook.fanduel.com/sbapi/content-managed-page",
@@ -90,7 +98,7 @@ def resumen(status, cuerpo: bytes) -> str:
         d = json.loads(cuerpo)
     except ValueError:
         return "✗ 200 pero no es JSON (página de verificación antibots)"
-    n = len(d) if isinstance(d, list) else len(d.get("events") or d.get("fixtures")
+    n = len(d) if isinstance(d, list) else len(d.get("events") or d.get("fixtures") or d.get("data")
                                                or (d.get("attachments") or {}).get("events") or [])
     return f"✅ HTTP 200 · {n} partidos/eventos"
 

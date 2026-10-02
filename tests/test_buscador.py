@@ -144,11 +144,13 @@ class Falso(Provider):
         return self.cands
 
 
-sync.guardar_fixture(conn, {"fixture_id": "92831", "fecha": "2026-09-28T14:00:00+00:00",
+# Fecha de HOY: el BOT borra los partidos de más de 3 días (DIAS_RETENCION).
+_DIA = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).date().isoformat()
+sync.guardar_fixture(conn, {"fixture_id": "92831", "fecha": _DIA + "T14:00:00+00:00",
                             "jugador1": "Martin Damm", "jugador2": "Arthur Fils",
                             "torneo": "ATP Tokyo", "genero": "M"}, "fixtures")
 conn.commit()
-clave = claves.clave_partido("92831", "2026-09-28", "Martin Damm", "Arthur Fils")
+clave = claves.clave_partido("92831", _DIA, "Martin Damm", "Arthur Fils")
 cli = TestClient(app_mod.app)
 H = {"Authorization": "Bearer " + emitir(S, "42", "ruben", "admin")}
 # Para probar el aislamiento se usan dos casas cualquiera como TESTING.
@@ -165,7 +167,7 @@ ok([p["id"] for p in cli.get("/api/mis-casas", headers=H).json()["providers"]]
    == ["kalshi", "polymarket"], "Mis casas: se leen del usuario del token")
 ok(cli.get("/api/resolver", params={"clave": clave, "provider": "luckia_co"},
            headers=H).json()["estado"] == "PROVIDER_PENDING", "casa pendiente: su estado, sin consultar")
-ok(cli.get("/api/resolver", params={"clave": clave, "provider": "bet365_nc"},
+ok(cli.get("/api/resolver", params={"clave": clave, "provider": "thescore_nc"},
            headers=H).json()["estado"] == "PROVIDER_PENDING", "casa OpticOdds sin trial: pendiente")
 
 # Aislamiento con dos fuentes de prueba (vía candidatos genérica).
@@ -173,6 +175,7 @@ conn.execute("UPDATE provider_catalog SET metodo='kalshi_api' WHERE id='kalshi'"
 conn.execute("UPDATE provider_catalog SET metodo='polymarket_gamma' WHERE id='polymarket'")
 conn.commit()
 providers._REGISTRO["kalshi_api"] = Falso(lento=True)
+cand = Candidato(cand.id_externo, cand.titulo, cand.url, _DIA + "T14:10:00+00:00", cand.texto_extra)  # fecha de hoy
 providers._REGISTRO["polymarket_gamma"] = Falso([cand])
 t0 = time.time()
 rk = cli.get("/api/resolver", params={"clave": clave, "provider": "kalshi"}, headers=H).json()
@@ -184,7 +187,7 @@ ok(cli.get("/api/resolver", params={"clave": clave, "provider": "kalshi"},
            headers=H).json()["estado"] == "ERROR", "casa que lanza excepción: ERROR aislado")
 providers._REGISTRO["kalshi_api"] = Falso([Candidato("E9", "Damm vs Fils",
                                                       "https://malicioso.example/x",
-                                                      "2026-09-28T14:00:00+00:00", "ATP")])
+                                                      _DIA + "T14:00:00+00:00", "ATP")])
 conn.execute("DELETE FROM provider_event_map")
 conn.commit()
 ok(cli.get("/api/resolver", params={"clave": clave, "provider": "kalshi"},
@@ -1105,6 +1108,59 @@ conn.commit()
 lista_dup = cli2.get("/api/partidos", params={"q": "lehecka bergs"}, headers=H).json()["partidos"]
 ok(len(lista_dup) == 1, f"búsqueda: el mismo partido registrado dos veces sale una sola vez ({len(lista_dup)})")
 ok("proxies" in cli2.get("/salud").json(), "/salud incluye el diagnóstico de salida de los proxies")
+
+# Hard Rock Bet (estructura de la captura del 02/10/2026) y bet365 solo-respaldo
+HR_R = {"data": [
+    {"id": "5750617385245737388", "name": "Dayana Yastremska vs Maja Chwalinska", "compName": "WTA Beijing",
+     "eventTime": str(int(_dt.fromisoformat(HOY.replace("Z", "+00:00")).timestamp() * 1000)),
+     "sport": "TENNIS", "inplay": True, "outright": False},
+    {"id": "1", "name": "A Uno/B Dos vs C Tres/D Cuatro", "compName": "WTA Beijing", "eventTime": "0",
+     "sport": "TENNIS", "inplay": True}], "meta": {"count": 2}}
+vistas_hr = []
+
+
+def hr_falso(request: httpx.Request):
+    vistas_hr.append(request)
+    return httpx.Response(200, json=HR_R)
+
+
+fu.FUENTES["hardrock"]._transporte = httpx.MockTransport(hr_falso)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
+fu.FUENTES["hardrock"]._eventos, fu.FUENTES["hardrock"]._cuando = [], 0.0
+catalogo.sembrar(conn)
+sync.guardar_fixture(conn, {"fixture_id": "hr-1", "fecha": HOY, "jugador1": "Yastremska D.",
+                            "jugador2": "Chwalinska M.", "torneo": "WTA Beijing", "genero": "F"}, "fixtures")
+conn.execute("DELETE FROM provider_event_map")
+conn.commit()
+clave_hr = claves.clave_partido("hr-1", HOY, "Yastremska D.", "Chwalinska M.")
+r_hr = res_f("hardrock_fl", clave_hr)
+ok(r_hr["url"] == "https://app.hardrock.bet/competition/wtaBeijing/5750617385245737388",
+   "Hard Rock: enlace /competition/<torneo>/<número>, igual que la captura")
+q_hr = vistas_hr[0].url.params
+ok(q_hr.get("sports") == "TENNIS" and q_hr.get("inplay") == "true" and q_hr.get("channel") == "FLORIDA_ONLINE"
+   and "cookie" not in {k.lower() for k in vistas_hr[0].headers.keys()},
+   "Hard Rock: pide el tenis en vivo de su estado, sin cookies")
+ok(len(fu.FUENTES["hardrock"]._eventos) == 1, "Hard Rock: sin dobles")
+r_365 = res_f("bet365_nc", clave_hr)
+ok(r_365["estado"] == "NO_ENCONTRADO" and r_365.get("respaldo") == "https://www.nc.bet365.com/#/AS/B13/",
+   "bet365: casa «solo sección de tenis» (abre su tenis con el apellido copiado)")
+ok(any(c["id"] == "bet365_nc" and c["seleccionable"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]),
+   "bet365 y Hard Rock se pueden elegir en la pestaña")
+
+# Estado del usuario: BetMGM y bet365 tienen una web por estado
+r_fl = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "bet365_nc", "estado": "fl"}, headers=H).json()
+ok(r_fl.get("respaldo") == "https://www.fl.bet365.com/#/AS/B13/", "estado=fl: bet365 en www.fl.bet365.com")
+r_mal = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "bet365_nc", "estado": "zz"}, headers=H).json()
+ok(r_mal.get("respaldo") == "https://www.nc.bet365.com/#/AS/B13/", "estado desconocido: se ignora")
+r_hr_fl = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "hardrock_fl", "estado": "nj"}, headers=H).json()
+ok(r_hr_fl.get("url") == "https://app.hardrock.bet/competition/wtaBeijing/5750617385245737388",
+   "Hard Rock: misma dirección en cualquier estado")
+from buscador.app import _url_estado  # noqa: E402
+ok(_url_estado("https://www.nc.betmgm.com/en/sports/events/a-b-1", "fl") == "https://www.fl.betmgm.com/en/sports/events/a-b-1",
+   "BetMGM: la dirección pasa al estado del usuario")
+ok({c["region"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]
+    if c["id"] in ("hardrock_fl", "draftkings_nc", "bet365_nc")} == {"US"},
+   "EE. UU. es una sola región (las bases antiguas US-NC/US-FL se migran)")
 
 # UTR: categoría propia y partidos que solo tienen las casas
 from buscador import categoria as categoria_m, cobertura as cobertura_m  # noqa: E402

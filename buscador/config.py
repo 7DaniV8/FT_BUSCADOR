@@ -111,6 +111,10 @@ BETANO_X_OPERATOR = os.getenv("BETANO_X_OPERATOR", "17").strip()
 BETANO_MAX_NUEVOS = _int("BETANO_MAX_NUEVOS", 20, 1, 100)   # detalles nuevos por lectura
 # Wplay: cualquier página suya lleva la barra de partidos en vivo.
 WPLAY_URL = os.getenv("WPLAY_URL", "https://apuestas.wplay.co/es").strip()
+# Hard Rock Bet: su web pide los partidos por estado (canal y segmento).
+# Valores de la captura del 02/10/2026 (Florida); cambiar si se usa otro estado.
+HARDROCK_CHANNEL = os.getenv("HARDROCK_CHANNEL", "FLORIDA_ONLINE").strip()
+HARDROCK_SEGMENT = os.getenv("HARDROCK_SEGMENT", "fl").strip()
 # Kalshi: API oficial y pública. Series de partidos de tenis (las que no existan se saltan).
 KALSHI_API = os.getenv("KALSHI_API", "https://api.elections.kalshi.com/trade-api/v2").rstrip("/")
 KALSHI_SERIES = [x.strip().upper() for x in os.getenv(

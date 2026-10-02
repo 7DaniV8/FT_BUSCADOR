@@ -39,13 +39,22 @@
   var estado = { token: null, url: null, vence: 0, iniciado: false, partido: null,
                  nombrePartido: '', apellido: '', enlaces: [], catalogo: [], mias: [],
                  sub: 'anon', pantallas: [], multi: false,
-                 pref: { modo: 'todas', max: 4, pantalla: {} } };
+                 pref: { modo: 'todas', max: 4, pantalla: {}, estado: 'fl' } };
   var MOVIL = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   var ESTADOS = { PROVIDER_PENDING: 'pendiente', COMING_SOON: 'próximamente',
                   NOT_AVAILABLE_REGION: 'no disponible en la región', MAINTENANCE: 'en mantenimiento',
                   DISABLED: 'desactivada', TESTING: 'en prueba', ACTIVE: 'activa' };
-  var REGIONES = [['CO', 'Colombia'], ['US-NC', 'EE. UU. (Carolina del Norte)'],
-                  ['GLOBAL', 'Mercados de predicción']];
+  var REGIONES = [['CO', 'Colombia'], ['US', 'EE. UU.'], ['US-NC', 'EE. UU. (Carolina del Norte)'],
+                  ['US-FL', 'EE. UU. (Florida)'], ['GLOBAL', 'Mercados de predicción']];
+  // Estado de EE. UU. del usuario: BetMGM y bet365 tienen una web por estado
+  // (el buscador ajusta la dirección); el resto de casas no cambia.
+  var ESTADOS_US = [['AZ', 'Arizona'], ['AR', 'Arkansas'], ['CO', 'Colorado'], ['CT', 'Connecticut'],
+    ['DC', 'Washington D. C.'], ['FL', 'Florida'], ['IL', 'Illinois'], ['IN', 'Indiana'], ['IA', 'Iowa'],
+    ['KS', 'Kansas'], ['KY', 'Kentucky'], ['LA', 'Luisiana'], ['ME', 'Maine'], ['MD', 'Maryland'],
+    ['MA', 'Massachusetts'], ['MI', 'Míchigan'], ['NH', 'Nuevo Hampshire'], ['NJ', 'Nueva Jersey'],
+    ['NY', 'Nueva York'], ['NC', 'Carolina del Norte'], ['OH', 'Ohio'], ['PA', 'Pensilvania'],
+    ['RI', 'Rhode Island'], ['TN', 'Tennessee'], ['VT', 'Vermont'], ['VA', 'Virginia'],
+    ['WV', 'Virginia Occidental'], ['WY', 'Wyoming']];
   var ICONO = {
     ENCONTRADO: '✅ ENCONTRADO', NO_ENCONTRADO: '❌ NO ENCONTRADO', AMBIGUO: '🟠 AMBIGUO',
     LOGIN_REQUERIDO: '🟡 LOGIN REQUERIDO', UBICACION_REQUERIDA: '🟡 UBICACIÓN REQUERIDA',
@@ -124,6 +133,7 @@
       if (g && (g.modo === 'todas' || g.modo === 'cuadricula' || g.modo === 'una')) estado.pref.modo = g.modo;
       if (g && g.max >= 1 && g.max <= 9) estado.pref.max = g.max;
       if (g && g.pantalla && typeof g.pantalla === 'object') estado.pref.pantalla = g.pantalla;
+      if (g && /^[a-z]{2}$/.test(g.estado || '')) estado.pref.estado = g.estado;
     } catch (e) { /* nada */ }
     if (MOVIL && estado.pref.modo === 'cuadricula') estado.pref.modo = 'todas';
     pintarDistribucion();
@@ -155,6 +165,11 @@
       cuadricula: 'Se abren todas a la vez, colocadas en tus pantallas según los enlaces encontrados.',
       una: 'No se abre nada solo: un botón «Abrir» por casa.' })[modo] + '</div>';
     if (MOVIL) h += '<div class="muted">En el móvil no hay cuadrícula.</div>';
+    h += '<div class="bb-opciones"><label>Tu estado (EE. UU.) <select id="bb-estado-us">' +
+      ESTADOS_US.map(function (e) {
+        return '<option value="' + e[0].toLowerCase() + '"' + (estado.pref.estado === e[0].toLowerCase() ? ' selected' : '') +
+               '>' + esc(e[1]) + '</option>'; }).join('') +
+      '</select></label><span class="muted">para las casas que tienen una web por estado</span></div>';
     if (cuad && !MOVIL) {
       h += '<div class="bb-opciones"><label>Máximo por pantalla <input type="number" id="bb-max" min="1" max="9" value="' +
         estado.pref.max + '" style="width:52px"></label>' +
@@ -206,8 +221,14 @@
       return '<div class="bb-grupo"><div class="bb-region">' + esc(r[1]) + '</div>' +
              '<div class="ctrl-options">' + g.map(casa).join('') + '</div></div>';
     }).join('');
-    var resto = disp.filter(function (p) { return !vistas[p.id]; });
-    if (resto.length) html += '<div class="bb-grupo"><div class="ctrl-options">' + resto.map(casa).join('') + '</div></div>';
+    // Regiones que la pestaña aún no conoce: con su código como título.
+    var otras = {};
+    disp.filter(function (p) { return !vistas[p.id]; }).forEach(function (p) {
+      (otras[p.region || ''] = otras[p.region || ''] || []).push(p); });
+    Object.keys(otras).forEach(function (r) {
+      html += '<div class="bb-grupo">' + (r ? '<div class="bb-region">' + esc(r) + '</div>' : '') +
+              '<div class="ctrl-options">' + otras[r].map(casa).join('') + '</div></div>';
+    });
     cont.innerHTML = html;
   }
 
@@ -316,7 +337,8 @@
   function resolverTodas(casas, alLlegar) {
     return Promise.allSettled(casas.map(function (c) {
       return api('/api/resolver?clave=' + encodeURIComponent(estado.partido) +
-                 '&provider=' + encodeURIComponent(c.id), null, T_CASA)
+                 '&provider=' + encodeURIComponent(c.id) +
+                 '&estado=' + encodeURIComponent(estado.pref.estado || ''), null, T_CASA)
         .then(function (r) { return r; },
               function () { return { provider: c.id, nombre: c.nombre, estado: 'ERROR' }; })
         .then(function (r) {
@@ -438,6 +460,7 @@
       $('bb-dist').addEventListener('change', function (ev) {
         var t = ev.target;
         if (t.name === 'bb-modo') { estado.pref.modo = t.value; guardarPref(); pintarDistribucion(); }
+        else if (t.id === 'bb-estado-us') { estado.pref.estado = t.value; guardarPref(); }
         else if (t.id === 'bb-max') { var m = parseInt(t.value, 10);
           if (m >= 1 && m <= 9) { estado.pref.max = m; guardarPref(); } }
         else if (t.getAttribute('data-casa')) {

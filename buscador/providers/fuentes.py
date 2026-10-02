@@ -15,6 +15,7 @@ reales el 30/09/2026.
   betano      Betano CO           1 petición = partidos en vivo (con deporte) +
                                   1 por partido de tenis NUEVO (nombres; se guardan)
   wplay       Wplay               1 página HTML: su barra de partidos en vivo
+  hardrock    Hard Rock Bet       1-2 peticiones = tenis EN VIVO (por estado)
   polymarket  Polymarket          API OFICIAL pública (Gamma), eventos de tenis
 
 Cada fuente:
@@ -613,8 +614,54 @@ class Wplay(FuenteEnVivo):
         return list(eventos.values())
 
 
+# ── Hard Rock Bet ─────────────────────────────────────────────────────────
+def _camel(texto: str) -> str:
+    """'WTA Beijing' → 'wtaBeijing' (formato de la dirección de Hard Rock)."""
+    palabras = [p for p in re.split(r"[^0-9A-Za-z]+", normalizar(texto)) if p]
+    return (palabras[0] + "".join(p[:1].upper() + p[1:] for p in palabras[1:])) if palabras else "tennis"
+
+
+class HardRock(FuenteEnVivo):
+    """Tenis EN VIVO de Hard Rock Bet (captura del 02/10/2026). Sin cookies.
+    Enlace: app.hardrock.bet/competition/<torneoEnCamelCase>/<id>, p. ej.
+    /competition/wtaBeijing/5750617385245737388."""
+    metodo, nombre = "hardrock", "hardrock"
+    ENLACES = {"hardrock_fl": "https://app.hardrock.bet/competition/{comp_slug}/{id}"}
+
+    async def _cargar(self, cli):
+        salida, offset = [], 0
+        desde = int((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp() * 1000)
+        for _ in range(4):                                        # hasta 200 partidos
+            d = await self._get(
+                cli, "https://api.hardrocksportsbook.com/java-graphql/events",
+                params={"channel": config.HARDROCK_CHANNEL, "segment": config.HARDROCK_SEGMENT,
+                        "region": "us", "language": "enus", "sports": "TENNIS", "outright": "false",
+                        "inplay": "true", "start": str(desde), "sort": "compEventWeightingV2",
+                        "sortDesc": "false", "offset": str(offset), "limit": "50",
+                        "includeCount": "true", "includeMarkets": "false"},
+                headers=cabeceras_web("https://app.hardrock.bet"))
+            lote = (d or {}).get("data") or []
+            for ev in lote:
+                nombre = str(ev.get("name") or "")
+                if " vs " not in nombre or not ev.get("id"):
+                    continue
+                j1, j2 = nombre.split(" vs ", 1)
+                ms = ev.get("eventTime")
+                try:
+                    ini = datetime.fromtimestamp(int(ms) / 1000, timezone.utc).isoformat(timespec="seconds")
+                except (TypeError, ValueError):
+                    ini = ""
+                salida.append({"id": str(ev["id"]), "j1": j1.strip(), "j2": j2.strip(), "inicio": ini,
+                               "torneo": str(ev.get("compName") or ""), "en_juego": bool(ev.get("inplay")),
+                               "comp_slug": _camel(str(ev.get("compName") or ""))})
+            if len(lote) < 50:
+                break
+            offset += 50
+        return salida
+
+
 FUENTES = {f.metodo: f for f in (Kambi(), FanDuel(), DraftKings(), Caesars(), Kalshi(),
-                                 BetMGM(), Polymarket(), Betano(), Wplay())}
+                                 BetMGM(), Polymarket(), Betano(), Wplay(), HardRock())}
 
 
 async def refrescar_todas() -> dict[str, str]:
