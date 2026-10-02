@@ -137,6 +137,13 @@ def emparejar(p: Partido, eventos: list[dict]) -> tuple[str, dict | None, float]
             grupos[clave] = (min(conf, 1.0), ev)
     if not grupos:
         return NO_ENCONTRADO, None, 0.0
+    if len(grupos) == 1:
+        # Un ÚNICO partido de esos dos jugadores en ±1 día: es ese (02/10/2026,
+        # medido en producción: Bu vs Djokovic salía "dudoso" en 7 casas porque
+        # FullTenis lo tenía a las 01:00 y las casas a su hora real, más tarde).
+        # La diferencia de hora solo sirve para elegir entre VARIOS candidatos.
+        conf, ev = next(iter(grupos.values()))
+        return ENCONTRADO, ev, max(conf, UMBRAL)
     orden = sorted(grupos.values(), key=lambda x: -x[0])
     if len(orden) > 1 and orden[0][0] - orden[1][0] < EMPATE:
         return AMBIGUO, None, orden[0][0]

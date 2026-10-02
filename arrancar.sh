@@ -13,12 +13,49 @@
 #
 # Si Tailscale falla, el BOT arranca IGUAL: Betano pasa al respaldo y lo dice /salud.
 
-TS="tailscale --socket=/tmp/tailscale/tailscaled.sock"
+TS_BIN=""
 
 if [ -n "$TS_AUTHKEY" ]; then
-  if command -v tailscaled >/dev/null 2>&1; then
+  # Versión ACTUAL de Tailscale (02/10/2026): la de la imagen de Railway es la
+  # 1.76 y el aparato de salida va por la 1.102; con la 1.76 la salida no
+  # funcionaba aunque hubiera conexión. Se descarga la última oficial; si falla,
+  # se usa la de la imagen y el BOT arranca igual.
+  mkdir -p /tmp/tailscale /tmp/ts-reciente
+  if python3 - /tmp/ts-reciente >/tmp/tailscale/version.txt 2>/tmp/tailscale/descarga.log <<'PY'
+import io, json, os, sys, tarfile
+import httpx
+dest = sys.argv[1]
+info = httpx.get("https://pkgs.tailscale.com/stable/?mode=json", timeout=20).json()
+nombre = info["Tarballs"]["amd64"]
+datos = httpx.get("https://pkgs.tailscale.com/stable/" + nombre, timeout=90, follow_redirects=True).content
+n = 0
+with tarfile.open(fileobj=io.BytesIO(datos), mode="r:gz") as t:
+    for m in t.getmembers():
+        base = os.path.basename(m.name)
+        if m.isfile() and base in ("tailscale", "tailscaled"):
+            ruta = os.path.join(dest, base)
+            with open(ruta, "wb") as f:
+                f.write(t.extractfile(m).read())
+            os.chmod(ruta, 0o755)
+            n += 1
+if n != 2:
+    sys.exit(1)
+print(info.get("TarballsVersion", "?"))
+PY
+  then
+    TS_BIN="/tmp/ts-reciente/"
+    echo "[tailscale] usando la versión $(cat /tmp/tailscale/version.txt) (descargada)"
+  else
+    echo "[tailscale] no se pudo descargar la versión actual ($(tail -1 /tmp/tailscale/descarga.log)): se usa la de la imagen"
+  fi
+fi
+
+TS="${TS_BIN}tailscale --socket=/tmp/tailscale/tailscaled.sock"
+
+if [ -n "$TS_AUTHKEY" ]; then
+  if [ -n "$TS_BIN" ] || command -v tailscaled >/dev/null 2>&1; then
     mkdir -p /tmp/tailscale
-    tailscaled --tun=userspace-networking --socks5-server=localhost:1055 \
+    ${TS_BIN}tailscaled --tun=userspace-networking --socks5-server=localhost:1055 \
                --state=mem: --socket=/tmp/tailscale/tailscaled.sock \
                >/tmp/tailscale/tailscaled.log 2>&1 &
     sleep 3

@@ -1148,6 +1148,18 @@ ok(r_365["estado"] == "NO_ENCONTRADO" and r_365.get("respaldo") == "https://www.
 ok(any(c["id"] == "bet365_nc" and c["seleccionable"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]),
    "bet365 y Hard Rock se pueden elegir en la pestaña")
 
+# Hora de FullTenis muy distinta de la real (Bu vs Djokovic, 02/10/2026)
+_p_bu = Partido("x", "Yunchaokete Bu", "Novak Djokovic", "2026-10-02T01:00:00+00:00", True)
+_ev_bu = [{"id": 7, "j1": "Bu Yunchaokete", "j2": "Novak Djokovic", "inicio": "2026-10-02T10:30:00+00:00",
+           "en_juego": True}]
+ok(fu.emparejar(_p_bu, _ev_bu)[0] == ENCONTRADO,
+   "un único partido de esos jugadores con 9 h de diferencia de hora: ENCONTRADO (antes AMBIGUO)")
+_ev_dos = _ev_bu + [{"id": 8, "j1": "Novak Djokovic", "j2": "Yunchaokete Bu", "inicio": "2026-10-02T02:00:00+00:00"}]
+est_dos, ev_dos, _ = fu.emparejar(_p_bu, _ev_dos)
+ok(est_dos == ENCONTRADO and ev_dos["id"] == 8, "con DOS candidatos, la hora decide (elige el de la hora más cercana)")
+ok(fu.emparejar(_p_bu, [dict(_ev_bu[0], inicio="2026-10-06T10:30:00+00:00")])[0] == NO_ENCONTRADO,
+   "un partido de esos jugadores 4 días después NO es este")
+
 # Estado del usuario: BetMGM y bet365 tienen una web por estado
 r_nj = cli2.get("/api/resolver", params={"clave": clave_hr, "provider": "bet365_nc", "estado": "nj"}, headers=H).json()
 ok(r_nj.get("respaldo") == "https://www.nj.bet365.com/#/IP/B13", "estado=nj: bet365 en www.nj.bet365.com")
