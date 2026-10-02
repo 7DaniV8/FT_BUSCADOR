@@ -49,13 +49,25 @@ if [ -n "$TS_AUTHKEY" ]; then
           (
             sleep 120
             while true; do
-              PAIS=$(python3 -c "
+              # Se prueban las dos formas: socks5h (el aparato de salida resuelve los
+              # nombres) y socks5 (los resuelve el BOT). Medido el 02/10/2026: con
+              # conexión directa y "exit node" activo, socks5h daba ConnectTimeout.
+              RES=$(python3 -c "
 import httpx
-try:
-    print(httpx.get('https://ipinfo.io/json', proxy='socks5h://localhost:1055', timeout=20).json().get('country', '?'))
-except Exception as e:
-    print('error:' + type(e).__name__)
+r = {}
+for modo in ('socks5h', 'socks5'):
+    try:
+        r[modo] = httpx.get('https://ipinfo.io/json', proxy=modo + '://localhost:1055', timeout=20).json().get('country', '?')
+    except Exception as e:
+        r[modo] = 'error:' + type(e).__name__
+print(r['socks5h'] + ' ' + r['socks5'])
 " 2>/dev/null)
+              H_RES=${RES%% *}; S_RES=${RES##* }
+              if [ "$RES" != "$ULTIMO_RES" ]; then
+                echo "[tailscale] prueba de salida → socks5h: ${H_RES:-?} | socks5: ${S_RES:-?}"
+                ULTIMO_RES="$RES"
+              fi
+              case "$S_RES" in error:*|"") PAIS="$H_RES" ;; *) PAIS="$S_RES" ;; esac
               case "$PAIS" in
                 error:*|"")
                   echo "[tailscale] la salida por '${TS_EXIT_NODE}' no funciona (${PAIS:-sin respuesta}): reiniciándola"
