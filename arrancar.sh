@@ -35,6 +35,46 @@ if [ -n "$TS_AUTHKEY" ]; then
         done
         if [ "$ok" = 1 ]; then
           echo "[tailscale] salida por '${TS_EXIT_NODE}' en socks5h://localhost:1055"
+          # Diagnóstico (01/10/2026): ¿responde el aparato de salida y por qué vía?
+          if $TS ping -c 1 --timeout=10s "$TS_EXIT_NODE" >/tmp/tailscale/ping.log 2>&1; then
+            echo "[tailscale] ping a '${TS_EXIT_NODE}': $(tail -1 /tmp/tailscale/ping.log)"
+          else
+            echo "[tailscale] '${TS_EXIT_NODE}' NO responde al ping: $(tail -1 /tmp/tailscale/ping.log)"
+          fi
+          echo "[tailscale] estado: $($TS status 2>/dev/null | grep -i "$TS_EXIT_NODE" | head -1)"
+          # Vigilancia (01/10/2026): cada 5 min se PRUEBA la salida de verdad
+          # (ipinfo.io a través del proxy). Medido en producción: si el BOT arranca
+          # con el aparato apagado, la salida se queda atascada aunque luego vuelva.
+          # Si la prueba falla, se reinicia la salida (quitar y volver a poner).
+          (
+            sleep 120
+            while true; do
+              PAIS=$(python3 -c "
+import httpx
+try:
+    print(httpx.get('https://ipinfo.io/json', proxy='socks5h://localhost:1055', timeout=20).json().get('country', '?'))
+except Exception as e:
+    print('error:' + type(e).__name__)
+" 2>/dev/null)
+              case "$PAIS" in
+                error:*|"")
+                  echo "[tailscale] la salida por '${TS_EXIT_NODE}' no funciona (${PAIS:-sin respuesta}): reiniciándola"
+                  $TS set --exit-node= >/dev/null 2>&1
+                  sleep 3
+                  $TS set --exit-node="$TS_EXIT_NODE" >/tmp/tailscale/exit.log 2>&1 \
+                    || echo "[tailscale] no se pudo volver a fijar: $(tail -1 /tmp/tailscale/exit.log)"
+                  if ! $TS ping -c 1 --timeout=10s "$TS_EXIT_NODE" >/tmp/tailscale/ping.log 2>&1; then
+                    echo "[tailscale] '${TS_EXIT_NODE}' NO responde al ping: $(tail -1 /tmp/tailscale/ping.log)"
+                  fi
+                  ;;
+                *)
+                  [ -n "$AVISADO_OK" ] || echo "[tailscale] salida comprobada: sale por $PAIS"
+                  AVISADO_OK=1
+                  ;;
+              esac
+              sleep 300
+            done
+          ) &
         else
           echo "[tailscale] NO se pudo usar '${TS_EXIT_NODE}' como salida: $(tail -3 /tmp/tailscale/exit.log | tr '\n' ' ')"
           echo "[tailscale] revisa que '${TS_EXIT_NODE}' esté encendido, con 'Run exit node' y aprobado como Exit Node"
