@@ -147,6 +147,7 @@ class Falso(Provider):
 
 # Fecha de HOY: el BOT borra los partidos de más de 3 días (DIAS_RETENCION).
 _DIA = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).date().isoformat()
+_AYER = (__import__('datetime').date.fromisoformat(_DIA) - __import__('datetime').timedelta(days=1)).isoformat()
 sync.guardar_fixture(conn, {"fixture_id": "92831", "fecha": _DIA + "T14:00:00+00:00",
                             "jugador1": "Martin Damm", "jugador2": "Arthur Fils",
                             "torneo": "ATP Tokyo", "genero": "M"}, "fixtures")
@@ -219,12 +220,12 @@ def fullteni(request: httpx.Request):
                    request.headers.get("X-FTR-Internal-Secret")))
     if request.url.path == "/ft-intel/fixtures":
         return httpx.Response(200, json={"fixtures": [
-            {"fixture_id": 555, "fecha": "2026-09-29", "jugador1": "Ana Uno",
+            {"fixture_id": 555, "fecha": _AYER, "jugador1": "Ana Uno",
              "jugador2": "Bea Dos", "torneo": "W35 Kyoto", "genero": "F"}], "hay_mas": False})
     if request.url.path == "/ft-intel/en-vivo":
         return httpx.Response(200, json={"partidos": [
             {"fid": 9, "home": "Ana Uno", "away": "Bea Dos", "liga": "W35 Kyoto",
-             "primera_vez_visto": "2026-09-29T10:00:00Z"}]})
+             "primera_vez_visto": _AYER + "T10:00:00Z"}]})
     return httpx.Response(404)
 
 
@@ -282,20 +283,20 @@ conn.commit()
 
 LISTA = [
     {"fixtureId": "id1201406175125672", "participant1Name": "Ribeiro, Eduardo",
-     "participant2Name": "Sakamoto, Pedro", "startTime": "2026-09-30T13:00:00.000Z",
+     "participant2Name": "Sakamoto, Pedro", "startTime": _DIA + "T13:00:00.000Z",
      "hasOdds": True, "categorySlug": "challenger", "tournamentName": "ATP Challenger Curitiba",
      "statusName": "Pre-Game"},
     {"fixtureId": "pn129000000000000001", "participant1Name": "Eduardo Ribeiro",
-     "participant2Name": "Pedro Sakamoto", "startTime": "2026-09-30T13:00:00.000Z",
+     "participant2Name": "Pedro Sakamoto", "startTime": _DIA + "T13:00:00.000Z",
      "hasOdds": True, "categorySlug": "challenger", "tournamentName": "Curitiba"},
     {"fixtureId": "id1", "participant1Name": "Ribeiro E / Sakamoto P",
-     "participant2Name": "Otro A / Otro B", "startTime": "2026-09-30T15:00:00.000Z",
+     "participant2Name": "Otro A / Otro B", "startTime": _DIA + "T15:00:00.000Z",
      "hasOdds": True, "categorySlug": "challenger"},
     {"fixtureId": "id2", "participant1Name": "Ribeiro, Eduardo (Srl)",
-     "participant2Name": "Sakamoto, Pedro (Srl)", "startTime": "2026-09-30T16:00:00.000Z",
+     "participant2Name": "Sakamoto, Pedro (Srl)", "startTime": _DIA + "T16:00:00.000Z",
      "hasOdds": True, "categorySlug": "simulated-reality"},
     {"fixtureId": "id3", "participant1Name": "Ribeiro, Eduardo", "participant2Name": "Zeta, Zed",
-     "startTime": "2026-09-30T17:00:00.000Z", "hasOdds": True, "categorySlug": "challenger"},
+     "startTime": _DIA + "T17:00:00.000Z", "hasOdds": True, "categorySlug": "challenger"},
 ]
 ENLACES = {
     "betplay": "https://tienda.betplay.com.co/apuestas#event/1029306638",
@@ -330,16 +331,16 @@ providers.ODDSPAPI._transporte = httpx.MockTransport(oddspapi_falso)
 n = asyncio.run(providers.ODDSPAPI.sincronizar_fixtures(conn))
 ok(n == 3, "lista de OddsPapi: fuera dobles y simulados (SRL)")
 
-sync.guardar_fixture(conn, {"fixture_id": "777", "fecha": "2026-09-30",
+sync.guardar_fixture(conn, {"fixture_id": "777", "fecha": _DIA,
                             "jugador1": "Eduardo Ribeiro", "jugador2": "Pedro Sakamoto",
                             "torneo": "Challenger Curitiba", "genero": "M"}, "fixtures")
 conn.commit()
-clave_op = claves.clave_partido("777", "2026-09-30", "Eduardo Ribeiro", "Pedro Sakamoto")
+clave_op = claves.clave_partido("777", _DIA, "Eduardo Ribeiro", "Pedro Sakamoto")
 est, ids, conf = op.emparejar(conn, Partido(clave_op, "Eduardo Ribeiro", "Pedro Sakamoto",
-                                            "2026-09-30", False))
+                                            _DIA, False))
 ok(est == ENCONTRADO and ids[0] == "id1201406175125672",
    "empareja por los dos jugadores, cada uno en su lado; prefiere el id con más casas")
-est2, _, _ = op.emparejar(conn, Partido("x", "Eduardo Ribeiro", "Otro Jugador", "2026-09-30", False))
+est2, _, _ = op.emparejar(conn, Partido("x", "Eduardo Ribeiro", "Otro Jugador", _DIA, False))
 ok(est2 == NO_ENCONTRADO, "con un solo jugador no empareja")
 
 llamadas.clear()
@@ -374,7 +375,7 @@ async def _paralelo():
     conn.execute("DELETE FROM oddspapi_consultas")
     conn.commit()
     llamadas.clear()
-    p = Partido(clave_op, "Eduardo Ribeiro", "Pedro Sakamoto", "2026-09-30", False)
+    p = Partido(clave_op, "Eduardo Ribeiro", "Pedro Sakamoto", _DIA, False)
     return await asyncio.gather(*[providers.ODDSPAPI.resolver_directo(db.conectar(), p, pid)
                                   for pid in ("betplay_co", "rushbet_co", "draftkings_nc",
                                               "betmgm_nc", "kalshi")])
@@ -1147,6 +1148,103 @@ ok(r_365["estado"] == "NO_ENCONTRADO" and r_365.get("respaldo") == "https://www.
    "bet365: casa «solo sección de tenis» (abre su tenis EN VIVO con el apellido copiado)")
 ok(any(c["id"] == "bet365_nc" and c["seleccionable"] for c in cli2.get("/api/catalogo", headers=H).json()["providers"]),
    "bet365 y Hard Rock se pueden elegir en la pestaña")
+
+# Casa lenta con TIMEOUT_PROVIDER_S alto: el usuario recibe respuesta (y su
+# sección de tenis) ANTES de que la pestaña se rinda (Wplay, 02/10/2026)
+async def _wplay_lento(req):
+    await asyncio.sleep(10)
+    return httpx.Response(200, text="")
+
+_to, _rmax = config.TIMEOUT_PROVIDER_S, config.RESOLVER_MAX_S
+config.TIMEOUT_PROVIDER_S, config.RESOLVER_MAX_S = 15, 1
+fu.FUENTES["wplay"]._transporte = httpx.MockTransport(_wplay_lento)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
+fu.FUENTES["wplay"]._eventos, fu.FUENTES["wplay"]._cuando = [], 0.0
+conn.execute("DELETE FROM provider_event_map")
+conn.commit()
+t0 = _t.time()
+r_lento = res_f("wplay_co", clave_hr)
+ok(_t.time() - t0 < 3 and r_lento["estado"] == "ERROR" and r_lento.get("respaldo", "").startswith("https://apuestas.wplay.co"),
+   f"casa lenta: respuesta en {_t.time() - t0:.1f} s con su sección de tenis (no espera los 15 s)")
+config.TIMEOUT_PROVIDER_S, config.RESOLVER_MAX_S = _to, _rmax
+fu.FUENTES["wplay"]._transporte = httpx.MockTransport(colombia_falsa)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
+
+# DraftKings y FanDuel: la lista COMPLETA (capturas del 30/09 y 05/10/2026)
+sync.guardar_fixture(conn, {"fixture_id": "luan-1", "fecha": HOY, "jugador1": "Nino Ehrenschneider",
+                            "jugador2": "Ryuki Matsuda", "torneo": "ITF Men Luan", "genero": "M"}, "fixtures")
+conn.commit()
+clave_luan = claves.clave_partido("luan-1", HOY, "Nino Ehrenschneider", "Ryuki Matsuda")
+DK_LIVE = {"events": [{"id": "1", "sportId": "6", "name": "A Uno vs B Dos", "status": "STARTED",
+                       "startEventDate": HOY, "participants": [{"name": "A Uno", "sortOrder": 1},
+                                                               {"name": "B Dos", "sortOrder": 2}]}],
+           "sections": [{"name": "ATP - Tokyo", "associatedData": {"leagueIds": ["78721"]}},
+                        {"name": "ITF - Luan (M)", "associatedData": {"leagueIds": ["214652"]}}]}
+DK_LIGA = {"sports": [{"id": "6"}], "leagues": [{"id": "214652"}], "events": [
+    {"id": "34800001", "sportId": "6", "seoIdentifier": "nino-ehrenschneider-vs-ryuki-matsuda",
+     "name": "Nino Ehrenschneider vs Ryuki Matsuda", "status": "STARTED", "startEventDate": HOY,
+     "participants": [{"name": "Nino Ehrenschneider", "sortOrder": 1}, {"name": "Ryuki Matsuda", "sortOrder": 2}]}]}
+vistas_dk = []
+
+
+def dk_completo(req):
+    vistas_dk.append(str(req.url))
+    if "/nav/leagues/214652" in str(req.url):
+        return httpx.Response(200, json=DK_LIGA)
+    if "/nav/leagues/" in str(req.url):
+        return httpx.Response(200, json={"events": []})
+    return httpx.Response(200, json=DK_LIVE)
+
+
+fu.FUENTES["draftkings"]._transporte = httpx.MockTransport(dk_completo)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
+fu.FUENTES["draftkings"]._eventos, fu.FUENTES["draftkings"]._cuando, fu.FUENTES["draftkings"]._ligas = [], 0.0, {}
+conn.execute("DELETE FROM provider_event_map")
+conn.commit()
+ok(res_f("draftkings_nc", clave_luan).get("url") ==
+   "https://sportsbook.draftkings.com/event/nino-ehrenschneider-vs-ryuki-matsuda/34800001",
+   "DraftKings: encuentra el ITF de Luan leyendo TODAS sus competiciones en vivo (no solo la portada)")
+ok(sum("/nav/leagues/" in u for u in vistas_dk) == 2, "DraftKings: una petición por competición en vivo (2)")
+vistas_dk.clear()
+fu.FUENTES["draftkings"]._cuando = 0.0
+asyncio.run(fu.FUENTES["draftkings"].refrescar())
+ok(sum("/nav/leagues/" in u for u in vistas_dk) == 0, "DraftKings: cada competición se relee como mucho cada 2 min")
+
+FD_SPORT = {"attachments": {"events": {}, "competitions": {"12834033": {"name": "ATP Tokyo 2026"}}}}
+FD_FACET = {"facets": [{"type": "EVENT", "values": [
+    {"key": {"eventId": 36200001}, "next": {"values": [{"value": "true"}]}}]}],
+    "attachments": {"events": {"36200001": {"eventId": 36200001, "name": "Nino Ehrenschneider v Ryuki Matsuda",
+                                            "eventTypeId": 2, "competitionId": 13000001, "openDate": HOY}},
+                    "competitions": {"13000001": {"name": "ITF Men Luan"}}}}
+cuerpos_fd = []
+
+
+def fd_completo(req):
+    if req.method == "POST":
+        cuerpo = json.loads(req.content)
+        cuerpos_fd.append((req.url.host, req.headers.get("x-application"), cuerpo["filter"]))
+        if "eventTypeIds" in cuerpo["filter"]:
+            return httpx.Response(200, json={"facets": [], "attachments": {}})   # sin resultados por deporte
+        return httpx.Response(200, json=FD_FACET)
+    return httpx.Response(200, json=FD_SPORT)
+
+
+import json  # noqa: E402
+config.FANDUEL_AK = "ak-de-prueba"
+fu.FUENTES["fanduel"]._transporte = httpx.MockTransport(fd_completo)
+for _fx in fu.FUENTES.values(): _fx._fallo_en = 0.0   # simular recuperación
+fu.FUENTES["fanduel"]._eventos, fu.FUENTES["fanduel"]._cuando = [], 0.0
+conn.execute("DELETE FROM provider_event_map")
+conn.commit()
+ok(res_f("fanduel_nc", clave_luan).get("url") ==
+   "https://sportsbook.fanduel.com/tennis/itf-men-luan/nino-ehrenschneider-v-ryuki-matsuda-36200001",
+   "FanDuel: encuentra el ITF de Luan con su buscador interno (no estaba en la página SPORT)")
+ok(cuerpos_fd and cuerpos_fd[0][0] == "scan.nc.sportsbook.fanduel.com" and cuerpos_fd[0][1] == "ak-de-prueba",
+   "FanDuel: buscador del estado (scan.nc…) con su clave pública en x-application")
+ok(len(cuerpos_fd) == 2 and cuerpos_fd[0][2].get("eventTypeIds") == [2]
+   and cuerpos_fd[1][2].get("competitionIds") == [12834033],
+   "FanDuel: primero pide todo el tenis; si no responde, por sus competiciones")
+ok(any(e["en_juego"] for e in fu.FUENTES["fanduel"]._eventos), "FanDuel: sabe qué partidos están EN JUEGO")
 
 # Hora de FullTenis muy distinta de la real (Bu vs Djokovic, 02/10/2026)
 _p_bu = Partido("x", "Yunchaokete Bu", "Novak Djokovic", "2026-10-02T01:00:00+00:00", True)

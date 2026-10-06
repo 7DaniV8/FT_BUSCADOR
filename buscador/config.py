@@ -48,6 +48,11 @@ BUSCADOR_DB_PATH = os.getenv("BUSCADOR_DB_PATH", "/data/bot_buscador.db")
 # Por casa: una que tarda no retrasa a las demás (el navegador las pide en
 # paralelo) y tampoco se queda colgada en el servidor.
 TIMEOUT_PROVIDER_S = float(os.getenv("TIMEOUT_PROVIDER_S", "6"))
+# Respuesta al USUARIO (02/10/2026): siempre antes de que la pestaña se rinda
+# (espera 8 s por casa). Aunque TIMEOUT_PROVIDER_S sea mayor (lecturas de fondo
+# de casas lentas), al usuario se le contesta como mucho en este tiempo, con la
+# sección de tenis de la casa si no llegó a tiempo.
+RESOLVER_MAX_S = min(TIMEOUT_PROVIDER_S, float(os.getenv("RESOLVER_MAX_S", "6.5")))
 TIMEOUT_FTR_S = float(os.getenv("TIMEOUT_FTR_S", "15"))
 
 # ── Fuentes gratuitas (datos públicos de la web de cada casa) ────────────

@@ -210,6 +210,18 @@ class FuenteEnVivo(Provider):
         except ValueError:
             raise ProviderError(f"{self.nombre}: respuesta no es JSON") from None
 
+    async def _post(self, cli, url, cuerpo: dict, **kw):
+        try:
+            r = await cli.post(url, json=cuerpo, **kw)
+        except httpx.HTTPError as e:
+            raise ErrorRed(f"{self.nombre}: sin conexión ({type(e).__name__})") from None
+        if r.status_code != 200:
+            raise ProviderError(f"{self.nombre}: HTTP {r.status_code}")
+        try:
+            return r.json()
+        except ValueError:
+            raise ProviderError(f"{self.nombre}: respuesta no es JSON") from None
+
     async def _get_texto(self, cli, url, **kw) -> str:
         try:
             r = await cli.get(url, **kw)
@@ -316,18 +328,60 @@ class FanDuel(FuenteEnVivo):
             headers={**cabeceras_web("https://sportsbook.fanduel.com"),
                      "x-sportsbook-region": config.FUENTES_ESTADO_US.upper()})
         att = (d or {}).get("attachments") or {}
-        comps = att.get("competitions") or {}
+        comps = dict(att.get("competitions") or {})
+        eventos = dict(att.get("events") or {})
+        en_juego: dict[str, bool] = {}
+        # Buscador interno (captura del 05/10/2026): todo el tenis y si cada
+        # partido está EN JUEGO. La página SPORT solo trae los destacados.
+        try:
+            extra_ev, extra_comp, en_juego = await self._buscador(cli, list(comps.keys()))
+            eventos.update(extra_ev)
+            comps.update(extra_comp)
+        except ProviderError as e:
+            log.info(f"[fanduel] buscador interno no disponible ({e}); solo la página SPORT")
         salida = []
-        for ev in (att.get("events") or {}).values():
+        for ev in eventos.values():
             nombre = str(ev.get("name") or "")
             if " v " not in nombre or not ev.get("eventId"):
                 continue                      # fuera torneos 'a futuro' y similares
             j1, j2 = nombre.split(" v ", 1)
             comp = (comps.get(str(ev.get("competitionId"))) or {}).get("name", "")
             salida.append({"id": ev["eventId"], "j1": j1, "j2": j2, "inicio": ev.get("openDate", ""),
-                           "torneo": comp, "en_juego": bool(ev.get("inPlay")),
+                           "torneo": comp,
+                           "en_juego": en_juego.get(str(ev["eventId"]), bool(ev.get("inPlay"))),
                            "slug": _slug(nombre), "comp_slug": _slug(comp) or "e"})
         return salida
+
+    async def _buscador(self, cli, competiciones: list[str]):
+        """POST al buscador de FanDuel (facet search). Primero por deporte (tenis =
+        eventTypeId 2); si no devuelve nada, por las competiciones conocidas."""
+        url = f"https://scan.{config.FUENTES_ESTADO_US}.sportsbook.fanduel.com/api/sports/navigation/facet/v1.0/search"
+        cab = {**cabeceras_web("https://sportsbook.fanduel.com"), "x-application": config.FANDUEL_AK,
+               "content-type": "application/json"}
+
+        def cuerpo(filtro: dict) -> dict:
+            return {"filter": {**filtro, "contentGroup": {"language": "en", "regionCode": "NAMERICA"},
+                               "marketLevels": ["AVB_EVENT"], "maxResults": 0,
+                               "productTypes": ["SPORTSBOOK"], "selectBy": "FIRST_TO_START"},
+                    "facets": [{"type": "COMPETITION"}, {"type": "EVENT", "next": {"type": "IN_PLAY"}}],
+                    "currencyCode": "USD"}
+
+        d = await self._post(cli, url, cuerpo({"eventTypeIds": [2]}), headers=cab)
+        if not ((d or {}).get("attachments") or {}).get("events") and competiciones:
+            ids = [int(c) for c in competiciones if str(c).isdigit()][:100]
+            d = await self._post(cli, url, cuerpo({"competitionIds": ids}), headers=cab)
+        att = (d or {}).get("attachments") or {}
+        en_juego = {}
+        for faceta in (d or {}).get("facets") or []:
+            if faceta.get("type") != "EVENT":
+                continue
+            for v in faceta.get("values") or []:
+                ev_id = str((v.get("key") or {}).get("eventId") or "")
+                nxt = [x.get("value") for x in ((v.get("next") or {}).get("values") or [])]
+                if ev_id:
+                    en_juego[ev_id] = "true" in nxt
+        eventos = {str(k): e for k, e in (att.get("events") or {}).items() if e.get("eventTypeId") in (2, "2", None)}
+        return eventos, att.get("competitions") or {}, en_juego
 
 
 # ── DraftKings ────────────────────────────────────────────────────────────
@@ -335,13 +389,19 @@ class DraftKings(FuenteEnVivo):
     metodo, nombre = "draftkings", "draftkings"
     ENLACES = {"draftkings_nc": "https://sportsbook.draftkings.com/event/{seo}/{id}"}
 
-    async def _cargar(self, cli):
-        d = await self._get(
-            cli, "https://sportsbook-nash.draftkings.com/api/sportscontent/views/dkuswv/v1/live",
-            params={"tabId": "6"},
-            headers={**cabeceras_web("https://sportsbook.draftkings.com"),
-                     "x-client-name": "web", "x-client-page": "Live", "x-client-feature": "live-page",
-                     "x-client-version": config.DK_CLIENT_VERSION})
+    LIGA_TTL_S = 120          # cada competición se relee como mucho cada 2 min
+
+    def __init__(self):
+        super().__init__()
+        self._ligas: dict[str, tuple[float, list[dict]]] = {}
+
+    def _cab(self, pagina: str) -> dict:
+        return {**cabeceras_web("https://sportsbook.draftkings.com"), "x-client-name": "web",
+                "x-client-page": pagina, "x-client-feature": "live-page" if pagina == "Live" else "league-page",
+                "x-client-version": config.DK_CLIENT_VERSION}
+
+    @staticmethod
+    def _parsear(d) -> list[dict]:
         salida = []
         for ev in (d or {}).get("events") or []:
             if str(ev.get("sportId")) not in ("6", "") or not ev.get("id"):
@@ -349,11 +409,45 @@ class DraftKings(FuenteEnVivo):
             ps = sorted(ev.get("participants") or [], key=lambda x: x.get("sortOrder", 0))
             if len(ps) < 2:
                 continue
-            salida.append({"id": ev["id"], "j1": ps[0].get("name", ""), "j2": ps[1].get("name", ""),
+            salida.append({"id": str(ev["id"]), "j1": ps[0].get("name", ""), "j2": ps[1].get("name", ""),
                            "inicio": ev.get("startEventDate", ""), "torneo": "",
                            "en_juego": ev.get("status") == "STARTED",
                            "seo": ev.get("seoIdentifier") or _slug(ev.get("name", ""))})
         return salida
+
+    async def _cargar(self, cli):
+        """1) Portada en vivo: trae pocos partidos, pero LISTA las competiciones de
+        tenis que se están jugando (sections). 2) De cada competición, todos sus
+        partidos (nav/leagues/<id>), releída como mucho cada LIGA_TTL_S.
+        Medido (captura del 30/09/2026): 2 partidos en la portada frente a 7
+        competiciones (ATP, WTA, Challengers, ITF) con 15+ partidos cada una."""
+        d = await self._get(
+            cli, "https://sportsbook-nash.draftkings.com/api/sportscontent/views/dkuswv/v1/live",
+            params={"tabId": "6"}, headers=self._cab("Live"))
+        por_id = {e["id"]: e for e in self._parsear(d)}
+        ligas = []
+        for sec in (d or {}).get("sections") or []:
+            for lid in ((sec.get("associatedData") or {}).get("leagueIds") or []):
+                if str(lid) not in ligas:
+                    ligas.append(str(lid))
+        ahora = time.monotonic()
+        pendientes = [l for l in ligas[:20] if ahora - self._ligas.get(l, (0, []))[0] > self.LIGA_TTL_S]
+
+        async def una(lid):
+            try:
+                dl = await self._get(
+                    cli, f"https://sportsbook-nash.draftkings.com/sites/US-SB/api/sportscontent/"
+                         f"navigation/dkuswv/v2/nav/leagues/{lid}", headers=self._cab("League"))
+                self._ligas[lid] = (time.monotonic(), self._parsear(dl))
+            except ProviderError:
+                pass                              # esa competición, en la próxima
+        for i in range(0, len(pendientes), 5):
+            await asyncio.gather(*(una(l) for l in pendientes[i:i + 5]))
+        self._ligas = {l: v for l, v in self._ligas.items() if l in ligas}   # fuera las terminadas
+        for _, evs in self._ligas.values():
+            for e in evs:
+                por_id.setdefault(e["id"], e)
+        return list(por_id.values())
 
 
 # ── Caesars ───────────────────────────────────────────────────────────────

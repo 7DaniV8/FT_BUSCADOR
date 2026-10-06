@@ -389,10 +389,10 @@ async def _resolver(clave: str, provider: str):
             if hasattr(fuente, "resolver_directo"):
                 estado, url, conf, id_ext = await asyncio.wait_for(
                     fuente.resolver_directo(conn, partido, prov["id"]),
-                    timeout=config.TIMEOUT_PROVIDER_S)
+                    timeout=config.RESOLVER_MAX_S)
             else:
                 cands = await asyncio.wait_for(fuente.candidatos(partido),
-                                               timeout=config.TIMEOUT_PROVIDER_S)
+                                               timeout=config.RESOLVER_MAX_S)
                 estado, elegido, conf = elegir(partido, cands)
                 url = elegido.url if elegido else None
                 id_ext = elegido.id_externo if elegido else None
