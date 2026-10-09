@@ -400,6 +400,11 @@ async def _resolver(clave: str, provider: str):
             return {**base, "estado": ERROR, "detalle": "tiempo agotado"}
         except SinAccesoEnVivo:
             return {**base, "estado": ERROR, "detalle": "partido en juego sin enlace guardado"}
+        except fuentes_mod.SoloEnVivo:
+            # 08/10/2026: la casa solo publica partidos en juego; FullTenis no abre
+            # pestaña y puede reintentar cuando el partido empiece.
+            return {**base, "estado": NO_ENCONTRADO, "detalle": "la casa solo publica partidos en juego; reintentar al empezar",
+                    "solo_en_vivo": True}
         except Exception as e:
             log.warning(f"[{prov['id']}] {type(e).__name__}: {e}")
             return {**base, "estado": ERROR, "detalle": "fuente no disponible"}

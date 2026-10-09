@@ -1377,6 +1377,39 @@ ok(cli2.get("/salud").json().get("cors_permitidos") == config.ALLOWED_ORIGINS,
 sal = cli2.get("/salud").json()
 ok(set(sal.get("fuentes", {})) >= {"kambi", "fanduel", "draftkings", "caesars"}, "/salud muestra el estado de cada fuente")
 
+print("\n20. Emparejamiento mejorado (08/10/2026: «que siempre encuentre los partidos»)")
+from buscador.providers import fuentes as _fu2  # noqa: E402
+_hoy_iso = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
+ok(claves.apellidos("Carlos Alcaraz Garfia") == {"alcaraz", "garfia"}, "nombre + dos apellidos: los dos cuentan")
+ok("potro" in claves.apellidos("Juan Martin del Potro") and "del" not in claves.apellidos("Juan Martin del Potro"), "partículas ('del') no cuentan")
+ok(claves.apellidos("Zhizhen Zhang") == {"zhang"} and claves.apellidos("Zhang Z.") == {"zhang"}, "orden asiático en los dos formatos")
+ok(claves.parecidos("schwartzman", "schwarzman") and claves.parecidos("kecmanovic", "kecmanovich")
+   and not claves.parecidos("lee", "lei") and not claves.parecidos("perez", "pedro"), "grafías cercanas sí; cortas o distintas no")
+_evs = [{"id": "1", "j1": "C. Alcaraz", "j2": "J. Sinner", "inicio": _hoy_iso, "en_juego": True},
+        {"id": "2", "j1": "Diego Schwarzman", "j2": "F. Cerundolo", "inicio": _hoy_iso, "en_juego": True},
+        {"id": "3", "j1": "Zhang Zhizhen", "j2": "Y. Bu", "inicio": _hoy_iso, "en_juego": False}]
+ok(_fu2.emparejar(Partido("a", "Carlos Alcaraz Garfia", "Jannik Sinner", _hoy_iso, True), _evs)[1]["id"] == "1",
+   "Alcaraz Garfia ↔ 'C. Alcaraz': ahora casa")
+ok(_fu2.emparejar(Partido("b", "Schwartzman D.", "Cerundolo F.", _hoy_iso, True), _evs)[1]["id"] == "2",
+   "Schwartzman ↔ Schwarzman: casa por parecido")
+ok(_fu2.emparejar(Partido("c", "Zhizhen Zhang", "Yunchaokete Bu", _hoy_iso, True), _evs)[1]["id"] == "3",
+   "Zhang Zhizhen ↔ Zhizhen Zhang")
+ok(_fu2.emparejar(Partido("d", "Novak Djokovic", "Jannik Sinner", _hoy_iso, True), _evs)[0] == NO_ENCONTRADO,
+   "los dos apellidos siguen siendo obligatorios")
+# Casa solo EN VIVO y partido que todavía no empezó → SoloEnVivo (NO_ENCONTRADO con motivo, sin respaldo)
+_manana = (__import__('datetime').datetime.now(__import__('datetime').timezone.utc) + __import__('datetime').timedelta(hours=6)).isoformat()
+_kambi = _fu2.FUENTES["kambi"]
+_kambi._eventos, _kambi._cuando = [], __import__('time').monotonic()
+try:
+    asyncio.run(_kambi.resolver_directo(None, Partido("e", "Novak Djokovic", "Jannik Sinner", _manana, True), "betplay_co"))
+    ok(False, "casa solo en vivo + partido futuro: debe avisar")
+except _fu2.SoloEnVivo as e:
+    ok("solo partidos en juego" in str(e), "casa solo en vivo + partido futuro: avisa 'publica solo partidos en juego'")
+_ya = (__import__('datetime').datetime.now(__import__('datetime').timezone.utc) - __import__('datetime').timedelta(minutes=30)).isoformat()
+ok(asyncio.run(_kambi.resolver_directo(None, Partido("f", "Novak Djokovic", "Jannik Sinner", _ya, True), "betplay_co"))[0] == NO_ENCONTRADO,
+   "casa solo en vivo + partido ya empezado y no está: NO_ENCONTRADO normal")
+ok(_fu2.FUENTES["fanduel"].SOLO_EN_VIVO is False and _fu2.FUENTES["kambi"].SOLO_EN_VIVO is True, "FanDuel publica próximos; Kambi solo en vivo")
+
 print()
 print("TODO BIEN" if not fallos else f"{fallos} FALLO(S)")
 sys.exit(1 if fallos else 0)

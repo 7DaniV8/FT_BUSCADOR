@@ -46,7 +46,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from .. import config
-from ..claves import apellidos, dia, normalizar, tiene_hora
+from ..claves import apellido_en, apellidos, dia, normalizar, tiene_hora
 from ..resolver import AMBIGUO, ENCONTRADO, NO_ENCONTRADO, Partido
 from .base import Provider, ProviderError
 
@@ -68,6 +68,24 @@ TIEMPO_MAX_FUENTE_S = 15          # una fuente lenta nunca frena a las demás
 
 class ErrorRed(ProviderError):
     """No hay conexión con la fuente (caída, bloqueada o inalcanzable)."""
+
+
+class SoloEnVivo(ProviderError):
+    """La casa solo publica partidos en juego y este todavía no empezó (08/10/2026)."""
+
+
+def _ya_empezo(p: Partido) -> bool:
+    """Con hora conocida: ya pasó la hora de inicio (margen 5 min). Sin hora (ITF): se
+    asume que puede estar en juego, así que no se bloquea."""
+    if not tiene_hora(p.fecha):
+        return True
+    try:
+        fp = datetime.fromisoformat(p.fecha.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if fp.tzinfo is None:
+        fp = fp.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) >= fp - timedelta(minutes=5)
 
 
 async def _curl_get(url: str, params: dict, headers: dict, timeout: float, proxy: str | None = None):
@@ -110,7 +128,8 @@ def emparejar(p: Partido, eventos: list[dict]) -> tuple[str, dict | None, float]
     grupos: dict[str, tuple[float, dict]] = {}
     for ev in eventos:
         t1, t2 = _tokens(ev["j1"]), _tokens(ev["j2"])
-        if not ((a1 & t1 and a2 & t2) or (a1 & t2 and a2 & t1)):
+        # 08/10/2026: exacto o parecido (grafías de la casa), cada jugador en su lado.
+        if not ((apellido_en(a1, t1) and apellido_en(a2, t2)) or (apellido_en(a1, t2) and apellido_en(a2, t1))):
             continue
         conf = 0.9
         ini = str(ev.get("inicio") or "")
@@ -155,6 +174,7 @@ class FuenteEnVivo(Provider):
     """Lista de partidos cacheada + emparejamiento + enlace por casa."""
     nombre = "fuente"
     ENLACES: dict[str, str] = {}             # provider_id -> plantilla
+    SOLO_EN_VIVO = False                     # True: la casa solo publica partidos en juego
 
     def __init__(self):
         self._eventos: list[dict] = []
@@ -281,6 +301,10 @@ class FuenteEnVivo(Provider):
             # Flujo MTO: el partido pudo empezar después de la última lectura.
             estado, ev, conf = emparejar(p, await self.eventos(forzar=True))
         if estado != ENCONTRADO:
+            if estado == NO_ENCONTRADO and self.SOLO_EN_VIVO and not _ya_empezo(p):
+                # 08/10/2026: no es que "no exista": esta casa solo publica lo que está
+                # en juego. Se dice, para que FullTenis no abra la pestaña y reintente al empezar.
+                raise SoloEnVivo(f"{self.nombre}: publica solo partidos en juego; este no empezó")
             return estado, None, conf, None
         return ENCONTRADO, plantilla.format(**ev), conf, str(ev["id"])
 
@@ -291,6 +315,7 @@ class FuenteEnVivo(Provider):
 # ── Kambi: BetPlay + Rushbet ──────────────────────────────────────────────
 class Kambi(FuenteEnVivo):
     metodo, nombre = "kambi", "kambi"
+    SOLO_EN_VIVO = True                      # 08/10/2026: solo tenis EN VIVO
     ENLACES = {"betplay_co": "https://tienda.betplay.com.co/apuestas#event/{id}",
                "rushbet_co": "https://www.rushbet.co/?page=sportsbook#event/{id}"}
 
@@ -387,6 +412,7 @@ class FanDuel(FuenteEnVivo):
 # ── DraftKings ────────────────────────────────────────────────────────────
 class DraftKings(FuenteEnVivo):
     metodo, nombre = "draftkings", "draftkings"
+    SOLO_EN_VIVO = True                      # 08/10/2026: solo tenis EN VIVO
     ENLACES = {"draftkings_nc": "https://sportsbook.draftkings.com/event/{seo}/{id}"}
 
     LIGA_TTL_S = 120          # cada competición se relee como mucho cada 2 min
@@ -524,6 +550,7 @@ class BetMGM(FuenteEnVivo):
     captura: /en/sports/events/<nombre-en-slug>-<id>, p. ej.
     jiri-lehecka-cze-zizou-bergs-bel-19972424."""
     metodo, nombre = "betmgm", "betmgm"
+    SOLO_EN_VIVO = True                      # 08/10/2026: solo tenis EN VIVO
     # Bwin es de la misma empresa (Entain) y usa el mismo número de partido:
     # probado en Colombia con sports.bwin.co/es/sports/eventos/<id>.
     ENLACES = {"betmgm_nc": "https://{host}/en/sports/events/{slug}-{id}",
@@ -623,6 +650,7 @@ class Betano(FuenteEnVivo):
     web (BETANO_HOST) y enlazar siempre a la colombiana (BETANO_ENLACE_HOST):
     /live/<jugador-jugador>/<id>/ (formato de la captura)."""
     metodo, nombre = "betano", "betano"
+    SOLO_EN_VIVO = True                      # 08/10/2026: solo tenis EN VIVO
     ENLACES = {"betano_co": "https://{host}/live/{slug}/{id}/"}
 
     def __init__(self):
@@ -688,6 +716,7 @@ class Wplay(FuenteEnVivo):
     barra completa. Así que: 1) portada; 2) la página de cualquier partido en
     vivo que aparezca en ella; se juntan ambas listas."""
     metodo, nombre = "wplay", "wplay"
+    SOLO_EN_VIVO = True                      # 08/10/2026: solo tenis EN VIVO
     ENLACES = {"wplay_co": "https://apuestas.wplay.co{ruta}"}
     _CAB = {"Accept": "text/html,application/xhtml+xml", "Accept-Language": "es-CO,es;q=0.9"}
 
@@ -731,6 +760,7 @@ class HardRock(FuenteEnVivo):
     Enlace: app.hardrock.bet/competition/<torneoEnCamelCase>/<id>, p. ej.
     /competition/wtaBeijing/5750617385245737388."""
     metodo, nombre = "hardrock", "hardrock"
+    SOLO_EN_VIVO = True                      # 08/10/2026: solo tenis EN VIVO
     ENLACES = {"hardrock_fl": "https://app.hardrock.bet/competition/{comp_slug}/{id}"}
 
     async def _cargar(self, cli):
