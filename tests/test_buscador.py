@@ -1419,6 +1419,22 @@ ok(asyncio.run(_kambi.resolver_directo(None, Partido("f", "Novak Djokovic", "Jan
    "casa solo en vivo + partido ya empezado y no está: NO_ENCONTRADO normal")
 ok(_fu2.FUENTES["fanduel"].SOLO_EN_VIVO is False and _fu2.FUENTES["kambi"].SOLO_EN_VIVO is True, "FanDuel publica próximos; Kambi solo en vivo")
 
+# 19/11/2026: partido MOVIDO de día (Zverev vs Fils): queda solo la fecha nueva
+import sqlite3 as _sq  # noqa: E402
+_c = _sq.connect(":memory:"); _c.row_factory = _sq.Row; _c.executescript(db.ESQUEMA)
+for _f, _t in (("2026-11-17T10:30:00Z", "2026-11-16T00:00:00+00:00"), ("2026-11-18T10:30:00Z", "2026-11-17T00:00:00+00:00")):
+    sync.guardar_fixture(_c, {"fixture_id": "ATPF-9", "fecha": _f, "jugador1": "Alexander Zverev", "jugador2": "Arthur Fils",
+                              "torneo": "Nitto ATP Finals - Turin"}, "fixtures")
+    _c.execute("UPDATE fixtures_cache SET actualizado_en=? WHERE substr(fecha,1,10)=?", (_t, _f[:10]))
+sync.guardar_fixture(_c, {"fixture_id": "ATPF-9", "fecha": "2026-11-19T19:30:00Z", "jugador1": "Alexander Zverev",
+                          "jugador2": "Arthur Fils", "torneo": "Nitto ATP Finals - Turin"}, "fixtures")
+sync.guardar_fixture(_c, {"fixture_id": "OTRO-1", "fecha": "2026-11-17T12:00:00Z", "jugador1": "Ben Shelton",
+                          "jugador2": "Arthur Fils", "torneo": "Nitto ATP Finals - Turin"}, "fixtures")
+ok(sync.quitar_fantasmas(_c) == 2 and [r[0][:10] for r in _c.execute(
+    "SELECT fecha FROM fixtures_cache WHERE fixture_id='ATPF-9'")] == ["2026-11-19"]
+   and _c.execute("SELECT COUNT(*) FROM fixtures_cache WHERE fixture_id='OTRO-1'").fetchone()[0] == 1,
+   "partido movido de día: se borran las fechas viejas del mismo fixture y nada más")
+
 print()
 print("TODO BIEN" if not fallos else f"{fallos} FALLO(S)")
 sys.exit(1 if fallos else 0)

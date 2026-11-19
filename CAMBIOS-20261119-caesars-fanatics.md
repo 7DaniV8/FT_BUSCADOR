@@ -15,3 +15,8 @@
 **Archivos**: FT_BUSCADOR → buscador/config.py, catalogo.py, app.py, tests/test_buscador.py ·
 RankingFTR → research/web/static/js/tabs/buscador.js, templates/research.html (versión de caché).
 Pruebas: las nuevas pasan; los 2 fallos de DraftKings ya estaban en el ZIP original.
+
+**Partidos movidos de día (Zverev vs Fils, 19/11)**
+- La búsqueda tenía tres «Zverev vs Fils» (17, 18 y 19/11): FullTenis movió el partido de día y la fila vieja quedaba.
+  Elegir una vieja daba NO ENCONTRADO en casi todas las casas. Ahora, tras cada sincronización, del mismo fixture
+  solo queda la fecha que FullTenis mandó por última vez (`sync.quitar_fantasmas`).

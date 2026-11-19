@@ -67,6 +67,23 @@ def guardar_fixture(conn: sqlite3.Connection, f: dict, origen: str) -> bool:
     return True
 
 
+def quitar_fantasmas(conn: sqlite3.Connection) -> int:
+    """19/11/2026 (Zverev vs Fils, ATP Finals): la clave lleva el DÍA, así que cuando FullTenis
+    mueve un partido de día queda una fila nueva y la vieja sigue en la búsqueda (había tres
+    «Zverev vs Fils»: 17, 18 y 19/11). Elegir una vieja daba NO ENCONTRADO en casi todas las
+    casas. Del mismo fixture_id se queda solo la fila que FullTenis actualizó por última vez."""
+    viejas = [r[0] for r in conn.execute(
+        "SELECT f.clave FROM fixtures_cache f WHERE f.origen='fixtures' AND f.fixture_id<>'' AND EXISTS ("
+        "SELECT 1 FROM fixtures_cache o WHERE o.fixture_id=f.fixture_id AND o.origen='fixtures' AND o.clave<>f.clave "
+        "AND (o.actualizado_en>f.actualizado_en OR (o.actualizado_en=f.actualizado_en AND o.fecha>f.fecha)))")]
+    for c in viejas:
+        conn.execute("DELETE FROM fixtures_cache WHERE clave=?", (c,))
+        conn.execute("DELETE FROM provider_event_map WHERE clave=?", (c,))
+    if viejas:
+        log.info(f"[sync] {len(viejas)} partido(s) movido(s) de día: quitada la fecha vieja")
+    return len(viejas)
+
+
 def _ya_existe_par(conn, dia_: str, j1: str, j2: str) -> bool:
     """El mismo partido puede llegar por fixtures y por en-vivo, con ids
     distintos. Si ya está ese par de jugadores ese día, no se duplica."""
@@ -114,6 +131,7 @@ async def sincronizar_una_vez(conn: sqlite3.Connection, cliente: httpx.AsyncClie
                                          "genero": p.get("genero") or ""}, "en_vivo")
     limite = (datetime.now(timezone.utc) - timedelta(days=DIAS_RETENCION)).date().isoformat()
     conn.execute("DELETE FROM fixtures_cache WHERE substr(fecha,1,10) < ?", (limite,))
+    quitar_fantasmas(conn)
     _estado(conn, "ultimo_ok", _ahora())
     _estado(conn, "ultimo_resumen", f"fixtures={n_fix} en_vivo={n_vivo}")
     conn.commit()
