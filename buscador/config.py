@@ -65,16 +65,19 @@ FANDUEL_AK = os.getenv("FANDUEL_AK", "").strip()             # parámetro _ak p�
 DK_CLIENT_VERSION = os.getenv("DK_CLIENT_VERSION", "2640.2.1.7").strip()
 # Casas OCULTAS (02/10/2026): no aparecen en la pestaña, se quitan de "Mis casas"
 # y el BOT deja de leer su web. Para recuperar una, quitarla de la variable.
-# Por defecto: bet365 (nunca abre el partido) y Caesars (bloquea al programa).
+# Por defecto: bet365 (nunca abre el partido). 19/11/2026 (Daniel: «queremos incluir Caesars y
+# Fanatics»): Caesars sale de la lista; se lee con la huella de Chrome y, si aun así la bloquea,
+# su fila ofrece su sección de tenis con el apellido copiado (nunca abre una ventana vacía).
 # Betano se queda: funcionó y, si su salida por Colombia falla, responde al
 # instante con su sección de tenis.
 CASAS_OCULTAS = {x.strip().lower() for x in os.getenv(
-    "CASAS_OCULTAS", "bet365_nc,caesars_nc").split(",") if x.strip()}
+    "CASAS_OCULTAS", "bet365_nc").split(",") if x.strip()}
 # Fuentes que solo responden a una conexión con la huella de Chrome (curl_cffi).
 # Medido el 30/09/2026: BetMGM y Betano rechazan (403) a cualquier programa salvo así.
+# 19/11/2026: + Caesars (su verificación antibots rechazó la conexión normal el 30/09).
 # Riesgo: la casa no lo permite y puede bloquear la IP; se apaga dejándolo vacío.
 FUENTES_IMITAR_CHROME = {x.strip().lower() for x in os.getenv(
-    "FUENTES_IMITAR_CHROME", "betmgm,betano").split(",") if x.strip()}
+    "FUENTES_IMITAR_CHROME", "betmgm,betano,caesars").split(",") if x.strip()}
 # Proxy por fuente (p. ej. Betano solo responde a IPs colombianas y el servidor
 # está en EE. UU.). Formato: "betano=http://usuario:clave@host:puerto,otra=...".
 # Es un SECRETO: nunca se muestra en logs ni en /salud.

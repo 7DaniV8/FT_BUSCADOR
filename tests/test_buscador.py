@@ -171,6 +171,13 @@ ok(cli.get("/api/resolver", params={"clave": clave, "provider": "luckia_co"},
            headers=H).json()["estado"] == "PROVIDER_PENDING", "casa pendiente: su estado, sin consultar")
 ok(cli.get("/api/resolver", params={"clave": clave, "provider": "thescore_nc"},
            headers=H).json()["estado"] == "PROVIDER_PENDING", "casa OpticOdds sin trial: pendiente")
+# 19/11/2026: Fanatics (solo app) se puede marcar y su fila pide abrir la app; nunca da URL
+ok(cli.put("/api/mis-casas", json={"providers": ["fanatics_nc", "caesars_nc"]}, headers=H).status_code == 200,
+   "Mis casas: Fanatics y Caesars se pueden marcar")
+_rf = cli.get("/api/resolver", params={"clave": clave, "provider": "fanatics_nc"}, headers=H).json()
+ok(_rf.get("solo_app") is True and not _rf.get("url") and not _rf.get("respaldo"),
+   "Fanatics: «solo en la app», sin ventana ni sección de tenis")
+cli.put("/api/mis-casas", json={"providers": ["kalshi", "polymarket"]}, headers=H)
 
 # Aislamiento con dos fuentes de prueba (vía candidatos genérica).
 conn.execute("UPDATE provider_catalog SET metodo='kalshi_api' WHERE id='kalshi'")
@@ -1347,8 +1354,10 @@ ok("betano_co" in {c["id"] for c in cli2.get("/api/catalogo", headers=H).json()[
 os.environ.pop("CASAS_OCULTAS", None)
 import importlib as _il  # noqa: E402
 _cfg = _il.reload(__import__("buscador.config", fromlist=["x"]))
-ok(_cfg.CASAS_OCULTAS == {"bet365_nc", "caesars_nc"},
-   "por defecto (sin variable) quedan ocultas bet365 y Caesars; Betano se queda")
+ok(_cfg.CASAS_OCULTAS == {"bet365_nc"},
+   "por defecto (sin variable) solo queda oculta bet365; Caesars (19/11/2026) y Betano se quedan")
+ok("caesars" in _cfg.FUENTES_IMITAR_CHROME or "FUENTES_IMITAR_CHROME" in os.environ,
+   "Caesars se lee con la huella de Chrome por defecto")
 _cfg.CASAS_OCULTAS = set()
 
 # CORS: diagnóstico del origen rechazado

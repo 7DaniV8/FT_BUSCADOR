@@ -363,6 +363,9 @@ async def _resolver(clave: str, provider: str):
             return {**base, "estado": PENDIENTE, "detalle": "sin OpticOdds"}
         if prov["metodo"] == "oddspapi" and not config.ODDSPAPI_API_KEY:
             return {**base, "estado": PENDIENTE, "detalle": "sin OddsPapi"}
+        if prov["metodo"] == catalogo.SOLO_APP:
+            # 19/11/2026: casa sin web (Fanatics): no hay nada que abrir en el navegador.
+            return {**base, "estado": NO_ENCONTRADO, "detalle": "solo en la app", "solo_app": True}
         if prov["metodo"] == "respaldo":
             # Casa sin lectura posible (p. ej. bet365): siempre su sección de tenis.
             return {**base, "estado": NO_ENCONTRADO, "detalle": "solo sección de tenis"}

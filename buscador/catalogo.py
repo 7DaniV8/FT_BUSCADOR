@@ -34,6 +34,8 @@ NOT_AVAILABLE_REGION, MAINTENANCE, DISABLED = "NOT_AVAILABLE_REGION", "MAINTENAN
 PROVIDER_PENDING = "PROVIDER_PENDING"
 ESTADOS = (ACTIVE, TESTING, COMING_SOON, NOT_AVAILABLE_REGION, MAINTENANCE,
            DISABLED, PROVIDER_PENDING)
+# Método de las casas que solo tienen app (19/11/2026): ni se leen ni abren ventana.
+SOLO_APP = "solo_app"
 # Estados que un usuario puede marcar en "Mis casas".
 SELECCIONABLES = (ACTIVE, TESTING)
 
@@ -76,8 +78,11 @@ SEMILLA = [
        "Petición de la lista deducida: confirmar con probar_bloqueos.py."),
     _p("draftkings_nc", "DraftKings", NC, TESTING, "draftkings", ["draftkings.com"],
        "Datos públicos de su web (tenis en vivo). Enlace /event/<seo>/<id>."),
-    _p("fanatics_nc", "Fanatics Sportsbook", NC, PROVIDER_PENDING, "opticodds",
-       nota="Sin web pública de apuestas (solo app); betfanatics.com es informativa. Respaldo."),
+    # 19/11/2026 (Daniel: «queremos incluir Caesars y Fanatics»): Fanatics solo existe como APP
+    # (iOS/Android; sin web para apostar). Se puede marcar en "Mis casas": su fila dice que se
+    # abra la app y se busque el apellido (que queda copiado). Nunca abre ventana.
+    _p("fanatics_nc", "Fanatics Sportsbook", NC, TESTING, "solo_app",
+       nota="Solo app (sin web de apuestas): la pestaña pide abrir la app y buscar el apellido copiado."),
     _p("thescore_nc", "theScore Bet", NC, PROVIDER_PENDING, "opticodds",
        nota="OddsPapi no da enlace. Depende del trial de OpticOdds."),
     _p("betrivers_nc", "BetRivers", NC, NOT_AVAILABLE_REGION, "ninguno",
@@ -148,6 +153,7 @@ MIGRACIONES = {
     "betmgm_nc": [("opticodds", PROVIDER_PENDING), ("oddspapi", TESTING), ("ninguno", PROVIDER_PENDING)],
     "draftkings_nc": [("opticodds", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "caesars_nc": [("opticodds", PROVIDER_PENDING)],
+    "fanatics_nc": [("opticodds", PROVIDER_PENDING)],
     "betplay_co": [("ninguno", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "rushbet_co": [("ninguno", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "betano_co": [("ninguno", PROVIDER_PENDING)],
