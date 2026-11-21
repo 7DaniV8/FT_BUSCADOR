@@ -335,6 +335,31 @@ class Kambi(FuenteEnVivo):
         return salida
 
 
+class KambiUS(Kambi):
+    """19/11/2026 (Rubén: BetRivers). HAR de il.betrivers.com: la página lee
+    eu.offering-api.kambicdn.com/offering/v2018/rsiusil/event/live/open.json (market=US-IL) y abre
+    ?page=sportsbook#event/<id>, con el MISMO número de evento de Kambi que Rushbet. Se lee su propia
+    lista para no enlazar partidos que BetRivers no ofrece. Illinois por defecto; app.py pone el estado
+    del usuario en la dirección."""
+    metodo, nombre = "kambi_us", "kambi_us"
+    ENLACES = {"betrivers_nc": "https://il.betrivers.com/?page=sportsbook#event/{id}"}
+
+    async def _cargar(self, cli):
+        d = await self._get(
+            cli, f"https://{config.KAMBI_US_HOST}/offering/v2018/{config.KAMBI_US_OPERADOR}/event/live/open.json",
+            params={"lang": "en_US", "market": config.KAMBI_US_MERCADO, "client_id": "200", "channel_id": "1",
+                    "ncid": str(int(time.time() * 1000))})
+        salida = []
+        for x in (d or {}).get("liveEvents") or []:
+            ev = (x or {}).get("event") or {}
+            if ev.get("sport") != "TENNIS" or not ev.get("id"):
+                continue
+            salida.append({"id": ev["id"], "j1": ev.get("homeName", ""), "j2": ev.get("awayName", ""),
+                           "inicio": ev.get("start", ""), "torneo": ev.get("group", ""),
+                           "en_juego": ev.get("state") == "STARTED"})
+        return salida
+
+
 # ── FanDuel ───────────────────────────────────────────────────────────────
 class FanDuel(FuenteEnVivo):
     metodo, nombre = "fanduel", "fanduel"
@@ -795,7 +820,7 @@ class HardRock(FuenteEnVivo):
         return salida
 
 
-FUENTES = {f.metodo: f for f in (Kambi(), FanDuel(), DraftKings(), Caesars(), Kalshi(),
+FUENTES = {f.metodo: f for f in (Kambi(), KambiUS(), FanDuel(), DraftKings(), Caesars(), Kalshi(),
                                  BetMGM(), Polymarket(), Betano(), Wplay(), HardRock())}
 
 

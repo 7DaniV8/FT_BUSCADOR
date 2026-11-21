@@ -639,9 +639,16 @@ vistas_f = []
 modo_f = {"kambi": 200}
 
 
+# BetRivers EE. UU. (HAR 19/11): su propia lista; mismo número de Kambi para el mismo partido
+KAMBI_US_R = {"liveEvents": [{"event": {"id": 1029296001, "homeName": "Jiri Lehecka", "awayName": "Zizou Bergs",
+                                        "sport": "TENNIS", "group": "Tokyo", "state": "STARTED"}}]}
+
+
 def fuentes_falsas(request: httpx.Request):
     vistas_f.append(request)
     h = request.url.host
+    if "kambicdn" in h and "/rsiusil/" in str(request.url):     # 19/11/2026: BetRivers EE. UU.
+        return httpx.Response(200, json=KAMBI_US_R)
     if "kambicdn" in h:
         return httpx.Response(modo_f["kambi"], json=KAMBI_R)
     if "fanduel" in h:
@@ -672,9 +679,20 @@ rb, rr = res_f("betplay_co"), res_f("rushbet_co")
 ok(rb["url"] == "https://tienda.betplay.com.co/apuestas#event/1029296001"
    and rr["url"] == "https://www.rushbet.co/?page=sportsbook#event/1029296001",
    "Kambi: BetPlay y Rushbet con el MISMO número, cada una con su dominio")
-ok(len([r for r in vistas_f if "kambicdn" in r.url.host]) == 1,
+# 19/11/2026 (Rubén: BetRivers): misma lectura de Kambi, web del estado del usuario; no opera en NC
+_br = res_f("betrivers_nc")
+ok(_br["url"] == "https://il.betrivers.com/?page=sportsbook#event/1029296001", "BetRivers: mismo número de Kambi (Illinois por defecto)")
+_br_pa = cli2.get("/api/resolver", params={"clave": clave_f, "provider": "betrivers_nc", "estado": "pa"}, headers=H).json()
+ok(_br_pa["url"] == "https://pa.betrivers.com/?page=sportsbook#event/1029296001", "BetRivers: web del estado del usuario")
+_br_nc = cli2.get("/api/resolver", params={"clave": clave_f, "provider": "betrivers_nc", "estado": "nc"}, headers=H).json()
+ok(_br_nc["estado"] == "NO_DISPONIBLE" and not _br_nc.get("url"), "BetRivers: no opera en NC → lo dice, sin abrir nada")
+ok(cli2.get("/api/resolver", params={"clave": clave_f, "provider": "betrivers_nc", "estado": "de"}, headers=H).json()["estado"]
+   == "NO_DISPONIBLE", "BetRivers: Delaware no tiene web propia → no disponible")
+ok("/rsiusil/event/live/open.json" in str([r.url for r in vistas_f if "rsiusil" in str(r.url)]),
+   "BetRivers: lee la lista EN VIVO de Kambi EE. UU. (rsiusil)")
+ok(len([r for r in vistas_f if "kambicdn" in r.url.host and "rsiusil" not in str(r.url)]) == 1,
    "Kambi: una sola lectura sirve para las dos casas (caché)")
-ok("/betplay/event/live/open.json" in str([r.url for r in vistas_f if "kambicdn" in r.url.host][0]),
+ok("/betplay/event/live/open.json" in str([r.url for r in vistas_f if "kambicdn" in r.url.host and "rsiusil" not in str(r.url)][0]),
    "Kambi: lee la lista de partidos EN VIVO")
 ok(res_f("fanduel_nc")["url"] ==
    "https://sportsbook.fanduel.com/tennis/atp-tokyo-2026/jiri-lehecka-v-zizou-bergs-36127007",

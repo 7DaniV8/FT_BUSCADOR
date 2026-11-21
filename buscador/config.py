@@ -61,6 +61,11 @@ FUENTES_TTL_S = _int("FUENTES_TTL_S", 45, 15, 600)          # cada cuánto se re
 FUENTES_ESTADO_US = (os.getenv("FUENTES_ESTADO_US", "nc").strip().lower() or "nc")[:2]
 KAMBI_HOST = os.getenv("KAMBI_HOST", "us.offering-api.kambicdn.com").strip()
 KAMBI_OPERADOR = os.getenv("KAMBI_OPERADOR", "betplay").strip()   # mismo número para BetPlay y Rushbet
+# 19/11/2026 (Rubén: BetRivers · HAR de il.betrivers.com): BetRivers EE. UU. lee su PROPIA lista de Kambi
+# (operador rsiusil, mercado US-IL, host eu.): solo enlaza partidos que BetRivers de verdad ofrece.
+KAMBI_US_HOST = os.getenv("KAMBI_US_HOST", "eu.offering-api.kambicdn.com").strip()
+KAMBI_US_OPERADOR = os.getenv("KAMBI_US_OPERADOR", "rsiusil").strip()
+KAMBI_US_MERCADO = os.getenv("KAMBI_US_MERCADO", "US-IL").strip()
 FANDUEL_AK = os.getenv("FANDUEL_AK", "").strip()             # parámetro _ak público de su web
 DK_CLIENT_VERSION = os.getenv("DK_CLIENT_VERSION", "2640.2.1.7").strip()
 # Casas OCULTAS (02/10/2026): no aparecen en la pestaña, se quitan de "Mis casas"

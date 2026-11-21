@@ -85,8 +85,11 @@ SEMILLA = [
        nota="Solo app (sin web de apuestas): la pestaña pide abrir la app y buscar el apellido copiado."),
     _p("thescore_nc", "theScore Bet", NC, PROVIDER_PENDING, "opticodds",
        nota="OddsPapi no da enlace. Depende del trial de OpticOdds."),
-    _p("betrivers_nc", "BetRivers", NC, NOT_AVAILABLE_REGION, "ninguno",
-       nota="En catálogo, no habilitado para NC mientras no esté autorizado allí."),
+    # 19/11/2026 (Rubén: «Betrivers» · il.betrivers.com): BetRivers corre sobre Kambi, igual que
+    # Rushbet/BetPlay (misma empresa, RSI) → mismo número de evento. Web por estado (il., pa., ny.…);
+    # no opera en Carolina del Norte (ESTADOS_CASA). El id sigue siendo betrivers_nc por compatibilidad.
+    _p("betrivers_nc", "BetRivers", NC, TESTING, "kambi_us", ["betrivers.com"],
+       "Su propia lista de Kambi EE. UU. (rsiusil, en vivo; HAR del 19/11). Web por estado; no opera en NC."),
     _p("underdog_nc", "Underdog", NC, COMING_SOON, "ninguno"),
 
     # ── Colombia ─────────────────────────────────────────────────────
@@ -121,6 +124,9 @@ SEMILLA = [
 # públicas de septiembre de 2026). Si el usuario elige otro, la casa dice "no
 # opera en tu estado" en vez de abrir una ventana inútil. Actualizar al cambiar.
 ESTADOS_CASA = {
+    # 19/11/2026: BetRivers — sacado de su propio siteSelect.json (HAR de il.betrivers.com, 19/11): una
+    # web <estado>.betrivers.com por estado. Delaware opera pero sin web propia en esa lista → fuera.
+    "betrivers_nc": {"az", "co", "il", "in", "ia", "la", "md", "mi", "nj", "ny", "oh", "pa", "va", "wv"},
     "bet365_nc": {"az", "co", "il", "in", "ia", "ks", "ky", "la", "md", "mi", "mo", "nj", "nc",
                   "oh", "pa", "tn", "va"},
 }
@@ -128,6 +134,7 @@ ESTADOS_CASA = {
 RESPALDO = {
     "betplay_co": "https://tienda.betplay.com.co/apuestas#filter/tennis",
     "rushbet_co": "https://www.rushbet.co/?page=sportsbook#filter/tennis",
+    "betrivers_nc": "https://il.betrivers.com/?page=sportsbook#filter/tennis",
     "betano_co": "https://www.betano.co/live/",
     "wplay_co": "https://apuestas.wplay.co/es",
     "bwin_co": "https://sports.bwin.co/es/sports/tenis-5",
@@ -154,6 +161,7 @@ MIGRACIONES = {
     "draftkings_nc": [("opticodds", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "caesars_nc": [("opticodds", PROVIDER_PENDING)],
     "fanatics_nc": [("opticodds", PROVIDER_PENDING)],
+    "betrivers_nc": [("ninguno", NOT_AVAILABLE_REGION), ("kambi", TESTING)],
     "betplay_co": [("ninguno", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "rushbet_co": [("ninguno", PROVIDER_PENDING), ("oddspapi", TESTING)],
     "betano_co": [("ninguno", PROVIDER_PENDING)],

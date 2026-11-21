@@ -301,6 +301,7 @@ ESTADOS_US = {"al", "ak", "az", "ar", "ca", "co", "ct", "de", "dc", "fl", "ga", 
               "nj", "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut",
               "vt", "va", "wa", "wv", "wi", "wy"}
 _HOST_POR_ESTADO = __import__("re").compile(r"^https://www\.[a-z]{2}\.(betmgm|bet365)\.com/")
+_BETRIVERS_ESTADO = __import__("re").compile(r"^https://[a-z]{2}\.betrivers\.com/")
 
 
 def _url_estado(url: str | None, estado: str | None) -> str | None:
@@ -308,7 +309,9 @@ def _url_estado(url: str | None, estado: str | None) -> str | None:
     se cambia el estado de la dirección por el del usuario. El resto no cambia."""
     if not url or not estado:
         return url
-    return _HOST_POR_ESTADO.sub(lambda m: f"https://www.{estado}.{m.group(1)}.com/", url)
+    url = _HOST_POR_ESTADO.sub(lambda m: f"https://www.{estado}.{m.group(1)}.com/", url)
+    # 19/11/2026: BetRivers también tiene web por estado, sin «www.» (il.betrivers.com, pa.betrivers.com…)
+    return _BETRIVERS_ESTADO.sub(f"https://{estado}.betrivers.com/", url)
 
 
 @app.get("/api/resolver")
